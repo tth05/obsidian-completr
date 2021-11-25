@@ -1,0 +1,23 @@
+{
+	"name": "obsidian-completr",
+	"version": "0.0.1",
+	"description": "This plugin provides advanced auto-completion capabilities for Obsidian",
+	"main": "main.js",
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "node esbuild.config.mjs production"
+	},
+	"keywords": [],
+	"author": "tth05",
+	"license": "MIT",
+	"devDependencies": {
+		"@types/node": "^16.11.6",
+		"@typescript-eslint/eslint-plugin": "^5.2.0",
+		"@typescript-eslint/parser": "^5.2.0",
+		"builtin-modules": "^3.2.0",
+		"esbuild": "0.13.12",
+		"obsidian": "^0.12.17",
+		"tslib": "2.3.1",
+		"typescript": "4.4.4"
+	}
+}

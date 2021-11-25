@@ -1,0 +1,10 @@
+{
+    "id": "obsidian-completr",
+    "name": "Completr",
+    "version": "0.0.1",
+    "minAppVersion": "0.0.1",
+    "description": "This plugin provides advanced auto-completion capabilities for Obsidian",
+    "author": "tth05",
+    "authorUrl": "https://github.com/tth05",
+    "isDesktopOnly": true
+}
