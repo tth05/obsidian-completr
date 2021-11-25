@@ -1,10 +1,15 @@
 import {
-    Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo,
+    Editor,
+    EditorPosition,
+    EditorSuggest,
+    EditorSuggestContext,
+    EditorSuggestTriggerInfo,
     Plugin,
     TFile
 } from 'obsidian';
 import {GermanWords} from "./provider/german_words";
 import SuggestionProvider from "./provider/provider";
+import {Latex} from "./provider/latex_provider";
 
 export default class CompleterPlugin extends Plugin {
     async onload() {
@@ -17,8 +22,8 @@ export default class CompleterPlugin extends Plugin {
 }
 
 const MAX_LOOK_BACK_DISTANCE = 50;
-const SEPARATORS = [" ", ",", ".", "[", "]", "{", "}", "(", ")"];
-const PROVIDERS: SuggestionProvider[] = [GermanWords]
+const SEPARATORS = " ,.[]{}()$*+-/?|&";
+const PROVIDERS: SuggestionProvider[] = [Latex, GermanWords];
 
 class SuggestionPopup extends EditorSuggest<string> {
 
@@ -34,7 +39,7 @@ class SuggestionPopup extends EditorSuggest<string> {
         for (let provider of PROVIDERS) {
             suggestions = [...suggestions, ...provider.getSuggestions(context)];
         }
-        return suggestions.filter(s => s.toLowerCase().startsWith(context.query.toLowerCase()));
+        return suggestions;
     }
 
     onTrigger(cursor: EditorPosition, editor: Editor, file: TFile): EditorSuggestTriggerInfo | null {
