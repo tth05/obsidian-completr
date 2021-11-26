@@ -1,3 +1,9 @@
 .completer-suggestion-item {
     padding: 5px 10px 5px 10px;
 }
+
+.completer-suggestion-placeholder {
+    border-width: 1px 0 1px 0;
+    border-style: solid;
+    border-color: lightskyblue;
+}

@@ -1,13 +1,12 @@
 import SuggestionProvider from "./provider";
-import {EditorSuggestContext} from "obsidian";
+import { EditorSuggestContext } from "obsidian";
 
 function countDollarSigns(str: string): number {
     let count = 0;
     let wasDollar = false;
     for (let i = 0; i < str.length; i++) {
         if (str.charAt(i) === "$") {
-            if (!wasDollar)
-                count++;
+            if (!wasDollar) count++;
             wasDollar = !wasDollar;
         } else {
             wasDollar = false;
@@ -21,21 +20,27 @@ class LatexSuggestionProvider implements SuggestionProvider {
     getSuggestions(context: EditorSuggestContext): string[] {
         let editor = context.editor;
 
-        let countBefore = countDollarSigns(editor.getRange({line: 0, ch: 0}, context.start));
+        let countBefore = countDollarSigns(
+            editor.getRange({ line: 0, ch: 0 }, context.start)
+        );
 
         //Check if we're in a LaTeX context
         if (countBefore % 2 !== 1)
             return [];
 
         //This makes sure that matches like "\vee" are ranked before "\curlyvee" if the query is "\vee"
-        return LATEX_COMMANDS.filter(s => s.contains(context.query)).map(s => ({
-            s: s, priority: s.indexOf(context.query)
-        })).sort((a, b) => {
-            let val = a.priority - b.priority;
-            if (val == 0)
-                val = a.s.length - b.s.length;
-            return val;
-        }).map(t => t.s);
+        return LATEX_COMMANDS.filter((s) => s.contains(context.query))
+            .map((s) => ({
+                s: s,
+                priority: s.indexOf(context.query),
+            }))
+            .sort((a, b) => {
+                let val = a.priority - b.priority;
+                if (val == 0)
+                    val = a.s.length - b.s.length;
+                return val;
+            })
+            .map((t) => t.s);
     }
 }
 
@@ -44,8 +49,8 @@ export const Latex = new LatexSuggestionProvider();
 const LATEX_COMMANDS = [
     "\\above #",
     "\\verb|#|",
-    "\\left\#",
-    "\\right\#",
+    "\\left\\",
+    "\\right\\",
     "\\acute{#}",
     "\\aleph",
     "\\alpha",
