@@ -27,7 +27,15 @@ class LatexSuggestionProvider implements SuggestionProvider {
         if (countBefore % 2 !== 1)
             return [];
 
-        return LATEX_COMMANDS.filter(s => s.contains(context.query))
+        //This makes sure that matches like "\vee" are ranked before "\curlyvee" if the query is "\vee"
+        return LATEX_COMMANDS.filter(s => s.contains(context.query)).map(s => ({
+            s: s, priority: s.indexOf(context.query)
+        })).sort((a, b) => {
+            let val = a.priority - b.priority;
+            if (val == 0)
+                val = a.s.length - b.s.length;
+            return val;
+        }).map(t => t.s);
     }
 }
 
