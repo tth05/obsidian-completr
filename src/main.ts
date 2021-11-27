@@ -57,7 +57,6 @@ export default class CompleterPlugin extends Plugin {
         })
 
         this.snippetManager.onunload();
-        this.snippetManager = null;
     }
 }
 

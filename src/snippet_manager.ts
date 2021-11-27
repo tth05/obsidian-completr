@@ -24,6 +24,7 @@ export default class SnippetManager {
                     {
                         inclusiveLeft: true,
                         inclusiveRight: true,
+                        clearWhenEmpty: false,
                         className: "completer-suggestion-placeholder"
                     }
                 ),
