@@ -1,5 +1,5 @@
 import SuggestionProvider from "./provider";
-import { EditorSuggestContext } from "obsidian";
+import {EditorSuggestContext} from "obsidian";
 
 function countDollarSigns(str: string): number {
     let count = 0;
@@ -16,12 +16,20 @@ function countDollarSigns(str: string): number {
     return count;
 }
 
+function substringUntil(str: string, delimiter: string): string {
+    let index = str.indexOf(delimiter);
+    if(index === -1)
+        return str;
+
+    return str.substring(0, index);
+}
+
 class LatexSuggestionProvider implements SuggestionProvider {
     getSuggestions(context: EditorSuggestContext): string[] {
         let editor = context.editor;
 
         let countBefore = countDollarSigns(
-            editor.getRange({ line: 0, ch: 0 }, context.start)
+            editor.getRange({line: 0, ch: 0}, context.start)
         );
 
         //Check if we're in a LaTeX context
@@ -37,7 +45,7 @@ class LatexSuggestionProvider implements SuggestionProvider {
             .sort((a, b) => {
                 let val = a.priority - b.priority;
                 if (val == 0)
-                    val = a.s.length - b.s.length;
+                    val = substringUntil(a.s, "{").length - substringUntil(b.s, "{").length;
                 return val;
             })
             .map((t) => t.s);
