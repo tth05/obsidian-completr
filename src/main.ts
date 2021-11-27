@@ -25,6 +25,24 @@ export default class CompleterPlugin extends Plugin {
 
         this.registerEditorSuggest(new SuggestionPopup(this.app, this.snippetManager));
         this.registerCodeMirror(cm => cm.on('keydown', this.handleKeydown));
+
+        //TODO: Settings
+        // - Insertion mode: Replace, Append
+        // - Auto trigger
+        // - Customize "rainbow" colors for nested snippets
+        // - Specify word separators
+        // - Max look back distance
+        // - Disable file scanning
+        // - Delay between scanned lines
+        // - Only remember scanned words over length X
+    }
+
+    onunload() {
+        this.app.workspace.iterateCodeMirrors((cm) => {
+            cm.off('keydown', this.handleKeydown);
+        })
+
+        this.snippetManager.onunload();
     }
 
     private readonly handleKeydown = (cm: CodeMirror.Editor, event: KeyboardEvent) => {
@@ -49,14 +67,6 @@ export default class CompleterPlugin extends Plugin {
                 ch: Math.min(editor.getLine(placeholderEnd.line).length, placeholderEnd.ch + 1)
             });
         }
-    }
-
-    onunload() {
-        this.app.workspace.iterateCodeMirrors((cm) => {
-            cm.off('keydown', this.handleKeydown);
-        })
-
-        this.snippetManager.onunload();
     }
 }
 

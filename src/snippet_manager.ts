@@ -2,14 +2,20 @@ import {MarkerRange, TextMarker} from "codemirror";
 import {Editor, EditorPosition} from "obsidian";
 import * as CodeMirror from "codemirror";
 
+const COLORS = ["lightskyblue", "cornsilk", "orange", "pink", "green", "magenta", "navajowhite"];
+
 export type SnippetPlaceholder = {
     marker: TextMarker,
     editor: Editor
 }
+
 export default class SnippetManager {
     private currentPlaceholders: SnippetPlaceholder[] = [];
 
     handleSnippet(value: string, start: EditorPosition, editor: Editor) {
+        let color = COLORS.filter(color => !this.currentPlaceholders.find(p => p.marker.css.endsWith(color))).first() ??
+            COLORS[Math.floor(Math.random() * COLORS.length)];
+
         for (let i = value.length - 1; i >= 0; i--) {
             let c = value.charAt(i);
             if (c !== "#")
@@ -25,7 +31,8 @@ export default class SnippetManager {
                         inclusiveLeft: true,
                         inclusiveRight: true,
                         clearWhenEmpty: false,
-                        className: "completer-suggestion-placeholder"
+                        className: "completer-suggestion-placeholder",
+                        css: "border-color:" + color
                     }
                 ),
                 editor: editor

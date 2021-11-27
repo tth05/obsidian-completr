@@ -3,6 +3,7 @@ import {EditorSuggestContext} from "obsidian";
 
 class GermanWordsSuggestionProvider implements SuggestionProvider {
     getSuggestions(context: EditorSuggestContext): string[] {
+        //TODO: Rank those who match case higher
         return GERMAN_WORDS.filter(s => s.toLowerCase().startsWith(context.query.toLowerCase()));
     }
 }
