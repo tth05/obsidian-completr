@@ -19,12 +19,20 @@ import {MarkerRange} from "codemirror";
 export default class CompleterPlugin extends Plugin {
 
     private snippetManager: SnippetManager;
+    private suggestionPopup: SuggestionPopup;
+
+    private cursorTriggeredByChange = false;
 
     async onload() {
         this.snippetManager = new SnippetManager();
+        this.suggestionPopup = new SuggestionPopup(this.app, this.snippetManager);
 
-        this.registerEditorSuggest(new SuggestionPopup(this.app, this.snippetManager));
-        this.registerCodeMirror(cm => cm.on('keydown', this.handleKeydown));
+        this.registerEditorSuggest(this.suggestionPopup);
+        this.registerCodeMirror(cm => {
+            cm.on('keydown', this.handleKeydown);
+            cm.on('beforeChange', this.handleBeforeChange);
+            cm.on('cursorActivity', this.handleCursorActivity);
+        });
 
         //TODO: Settings
         // - Insertion mode: Replace, Append
@@ -40,10 +48,28 @@ export default class CompleterPlugin extends Plugin {
     onunload() {
         this.app.workspace.iterateCodeMirrors((cm) => {
             cm.off('keydown', this.handleKeydown);
+            cm.off('beforeChange', this.handleBeforeChange);
+            cm.off('cursorActivity', this.handleCursorActivity);
         })
 
         this.snippetManager.onunload();
     }
+
+    private readonly handleBeforeChange = (cm: CodeMirror.Editor) => {
+        this.cursorTriggeredByChange = true;
+    };
+
+    private readonly handleCursorActivity = (cm: CodeMirror.Editor) => {
+        if (this.cursorTriggeredByChange) {
+            this.cursorTriggeredByChange = false;
+            return;
+        }
+
+        this.suggestionPopup.close();
+        if (!this.snippetManager.placeholderAtPos(cm as any, cm.getCursor())) {
+            this.snippetManager.clearAllPlaceholders();
+        }
+    };
 
     private readonly handleKeydown = (cm: CodeMirror.Editor, event: KeyboardEvent) => {
         if (!["Enter", "Tab"].contains(event.key))

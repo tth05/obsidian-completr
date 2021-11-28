@@ -97,6 +97,12 @@ export default class SnippetManager {
         this.clearInvalidPlaceholders();
     }
 
+    clearAllPlaceholders() {
+        for (let i = this.currentPlaceholders.length - 1; i >= 0; i--) {
+            this.currentPlaceholders[i].marker.clear();
+        }
+    }
+
     private static rangeFromPlaceholder(placeholder: SnippetPlaceholder): MarkerRange {
         return (placeholder.marker.find() as MarkerRange);
     }
@@ -104,15 +110,8 @@ export default class SnippetManager {
     private clearInvalidPlaceholders() {
         for (let i = this.currentPlaceholders.length - 1; i >= 0; i--) {
             if (!this.currentPlaceholders[i].marker.find()) {
-                console.log("Cleared", this.currentPlaceholders[i]);
                 this.currentPlaceholders.splice(i, 1);
             }
-        }
-    }
-
-    private clearAllPlaceholders() {
-        for (let i = this.currentPlaceholders.length - 1; i >= 0; i--) {
-            this.currentPlaceholders[i].marker.clear();
         }
     }
 
