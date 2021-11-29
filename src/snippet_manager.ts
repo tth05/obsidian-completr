@@ -31,7 +31,7 @@ export default class SnippetManager {
                         inclusiveLeft: true,
                         inclusiveRight: true,
                         clearWhenEmpty: false,
-                        className: "completer-suggestion-placeholder",
+                        className: "completr-suggestion-placeholder",
                         css: "border-color:" + color
                     }
                 ),

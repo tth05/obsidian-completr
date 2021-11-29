@@ -1,22 +1,17 @@
 import {
-    App,
-    Editor,
-    EditorPosition,
-    EditorSuggest,
-    EditorSuggestContext,
-    EditorSuggestTriggerInfo,
     MarkdownView,
     Plugin,
-    TFile,
 } from "obsidian";
-import {GermanWords} from "./provider/german_words";
-import SuggestionProvider from "./provider/provider";
-import {Latex} from "./provider/latex_provider";
 import * as CodeMirror from "codemirror";
 import SnippetManager from "./snippet_manager";
 import {MarkerRange} from "codemirror";
+import SuggestionPopup from "./popup";
+import CompletrSettingsTab, {CompletrSettings, DEFAULT_SETTINGS} from "./settings";
+import {WordList} from "./provider/word_list_provider";
 
-export default class CompleterPlugin extends Plugin {
+export default class CompletrPlugin extends Plugin {
+
+    settings: CompletrSettings;
 
     private snippetManager: SnippetManager;
     private suggestionPopup: SuggestionPopup;
@@ -24,6 +19,8 @@ export default class CompleterPlugin extends Plugin {
     private cursorTriggeredByChange = false;
 
     async onload() {
+        await this.loadSettings();
+
         this.snippetManager = new SnippetManager();
         this.suggestionPopup = new SuggestionPopup(this.app, this.snippetManager);
 
@@ -33,6 +30,31 @@ export default class CompleterPlugin extends Plugin {
             cm.on('beforeChange', this.handleBeforeChange);
             cm.on('cursorActivity', this.handleCursorActivity);
         });
+
+        this.addSettingTab(new CompletrSettingsTab(this.app, this));
+
+        //TODO: Manual triggering of popup, requires some hackery?
+        /*this.addCommand({
+            id: 'completr-open-suggestion-popup',
+            name: 'Open suggestion popup',
+            hotkeys: [
+                {
+                    key: "Space",
+                    modifiers: ["Mod"]
+                }
+            ],
+            editorCallback: (editor) => {
+                const info = this.suggestionPopup.getSuggestions();
+                if(!info)
+                    return;
+                const context = {
+                    ...info,
+                    editor: editor,
+                    file: theActiveFile
+                }
+                this.suggestionPopup.showSuggestions(this.suggestionPopup.getSuggestions(context));
+            }
+        })*/
 
         //TODO: Settings
         // - Insertion mode: Replace, Append
@@ -53,6 +75,15 @@ export default class CompleterPlugin extends Plugin {
         })
 
         this.snippetManager.onunload();
+    }
+
+    async loadSettings() {
+        this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+        WordList.loadFromFiles(this.settings);
+    }
+
+    async saveSettings() {
+        await this.saveData(this.settings);
     }
 
     private readonly handleBeforeChange = (cm: CodeMirror.Editor) => {
@@ -93,80 +124,5 @@ export default class CompleterPlugin extends Plugin {
                 ch: Math.min(editor.getLine(placeholderEnd.line).length, placeholderEnd.ch + 1)
             });
         }
-    }
-}
-
-const MAX_LOOK_BACK_DISTANCE = 50;
-const SEPARATORS = " ,.[]{}()$*+-/?|&#";
-const PROVIDERS: SuggestionProvider[] = [Latex, GermanWords];
-
-class SuggestionPopup extends EditorSuggest<string> {
-    /**
-     * Hacky variable to prevent the suggestion window from immediately re-opening after completing a suggestion
-     */
-    private justClosed: boolean;
-    private snippetManager: SnippetManager;
-
-    constructor(app: App, snippetManager: SnippetManager) {
-        super(app);
-        this.snippetManager = snippetManager;
-    }
-
-    getSuggestions(
-        context: EditorSuggestContext
-    ): string[] | Promise<string[]> {
-        if (!context.query) return [];
-        let suggestions: string[] = [];
-        for (let provider of PROVIDERS) {
-            suggestions = [...suggestions, ...provider.getSuggestions(context)];
-        }
-        return suggestions;
-    }
-
-    onTrigger(cursor: EditorPosition, editor: Editor, file: TFile): EditorSuggestTriggerInfo | null {
-        if (this.justClosed) {
-            this.justClosed = false;
-            return null;
-        }
-        if (cursor.ch == 0)
-            return null;
-
-        let query = "";
-        //Save some time for very long lines
-        let lookBackEnd = Math.max(0, cursor.ch - MAX_LOOK_BACK_DISTANCE);
-        //Find word in front of cursor
-        for (let i = cursor.ch - 1; i >= lookBackEnd; i--) {
-            const prevChar = editor.getRange({...cursor, ch: i}, {...cursor, ch: i + 1});
-            if (SEPARATORS.contains(prevChar))
-                break;
-
-            query = prevChar + query;
-        }
-
-        return {
-            start: {
-                ...cursor,
-                ch: cursor.ch - query.length,
-            },
-            end: cursor,
-            query: query,
-        };
-    }
-
-    renderSuggestion(value: string, el: HTMLElement): void {
-        el.addClass("completer-suggestion-item");
-        el.setText(value);
-    }
-
-    selectSuggestion(value: string, evt: MouseEvent | KeyboardEvent): void {
-        this.context.editor.replaceRange(value, this.context.start, this.context.end);
-
-        //Check if suggestion is a snippet
-        if (value.contains("#")) {
-            this.snippetManager.handleSnippet(value, this.context.start, this.context.editor);
-        }
-
-        this.close();
-        this.justClosed = true;
     }
 }

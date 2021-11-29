@@ -1,8 +1,13 @@
-.completer-suggestion-item {
+.completr-suggestion-item {
     padding: 5px 10px 5px 10px;
 }
 
-.completer-suggestion-placeholder {
+.completr-suggestion-placeholder {
     border-width: 1px 0 1px 0;
     border-style: solid;
+}
+
+.completr-settings-list-item {
+    border-top: 1px solid grey;
+    padding: 4px 0 0 0;
 }
