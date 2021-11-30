@@ -40,7 +40,6 @@ export default class CompletrSettingsTab extends PluginSettingTab {
 
                         this.plugin.settings.minWordLength = parseInt(val);
                         await this.plugin.saveSettings();
-                        WordList.loadFromFiles(this.plugin.settings);
                     });
             });
 
@@ -66,8 +65,8 @@ export default class CompletrSettingsTab extends PluginSettingTab {
             if (oldLength === this.plugin.settings.worldListFiles.length)
                 return;
 
-            await this.plugin.saveSettings();
             WordList.loadFromFiles(this.plugin.settings);
+            await this.plugin.saveSettings();
             this.display();
         }
 
@@ -77,7 +76,11 @@ export default class CompletrSettingsTab extends PluginSettingTab {
             .addExtraButton(button => button
                 .setIcon("switch")
                 .setTooltip("Reload")
-                .onClick(() => WordList.loadFromFiles(this.plugin.settings)))
+                .onClick(() => {
+                    WordList.loadFromFiles(this.plugin.settings);
+                    //Refresh because loadFromFiles might have removed an invalid file
+                    this.display();
+                }))
             .addButton(button => {
                 button.buttonEl.appendChild(fileInput);
                 button
@@ -95,8 +98,8 @@ export default class CompletrSettingsTab extends PluginSettingTab {
                     .setTooltip("Remove")
                     .onClick(async () => {
                         this.plugin.settings.worldListFiles.remove(path);
-                        await this.plugin.saveSettings();
                         WordList.loadFromFiles(this.plugin.settings);
+                        await this.plugin.saveSettings();
                         this.display();
                     })
                 ).settingEl.addClass("completr-settings-list-item");

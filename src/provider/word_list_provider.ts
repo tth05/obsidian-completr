@@ -21,13 +21,17 @@ class WordListSuggestionProvider implements SuggestionProvider {
         this.wordMap.clear();
 
         //Read all files
-        for (let filePath of settings.worldListFiles) {
-            const data = readFileSync(filePath);
-            if (!data)
+        for (let i = settings.worldListFiles.length - 1; i >= 0; i--) {
+            let data: string;
+            try {
+                data = readFileSync(settings.worldListFiles[i])?.toString();
+            } catch (e) {
+                settings.worldListFiles.splice(i, 1);
                 continue;
+            }
 
             //Each line is a word
-            const lines = data.toString().split("\n");
+            const lines = data.split("\n");
             for (let line of lines) {
                 if (line === "" || line.length < settings.minWordLength)
                     continue;
