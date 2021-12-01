@@ -11,6 +11,7 @@ import {
     TFile
 } from "obsidian";
 import SnippetManager from "./snippet_manager";
+import {CompletrSettings} from "./settings";
 
 const MAX_LOOK_BACK_DISTANCE = 50;
 const SEPARATORS = " ,.[]{}()$*+-/?|&#";
@@ -21,10 +22,12 @@ export default class SuggestionPopup extends EditorSuggest<string> {
      * Hacky variable to prevent the suggestion window from immediately re-opening after completing a suggestion
      */
     private justClosed: boolean;
-    private snippetManager: SnippetManager;
+    private readonly snippetManager: SnippetManager;
+    private readonly settings: CompletrSettings;
 
-    constructor(app: App, snippetManager: SnippetManager) {
+    constructor(app: App, settings: CompletrSettings, snippetManager: SnippetManager) {
         super(app);
+        this.settings = settings;
         this.snippetManager = snippetManager;
     }
 
@@ -36,7 +39,7 @@ export default class SuggestionPopup extends EditorSuggest<string> {
 
         const time = window.performance.now();
         for (let provider of PROVIDERS) {
-            suggestions = [...suggestions, ...provider.getSuggestions(context)];
+            suggestions = [...suggestions, ...provider.getSuggestions(context, this.settings)];
         }
 
         console.log((window.performance.now() - time));

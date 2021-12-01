@@ -638,6 +638,7 @@ const LATEX_COMMANDS = [
     "\\prescript{#}{#}{#}",
     "\\prime",
     "\\prod",
+    "\\prod^{#}_{#}",
     "\\projlim",
     "\\propto",
     "\\psi",

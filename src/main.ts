@@ -22,7 +22,7 @@ export default class CompletrPlugin extends Plugin {
         await this.loadSettings();
 
         this.snippetManager = new SnippetManager();
-        this.suggestionPopup = new SuggestionPopup(this.app, this.snippetManager);
+        this.suggestionPopup = new SuggestionPopup(this.app, this.settings, this.snippetManager);
 
         this.registerEditorSuggest(this.suggestionPopup);
         this.registerCodeMirror(cm => {
