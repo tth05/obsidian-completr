@@ -79,7 +79,7 @@ export default class CompletrPlugin extends Plugin {
 
     async loadSettings() {
         this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-        WordList.loadFromFiles(this.settings);
+        await WordList.loadFromFiles(this.settings);
     }
 
     async saveSettings() {

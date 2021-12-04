@@ -1,5 +1,6 @@
 import SuggestionProvider from "./provider";
 import {EditorSuggestContext} from "obsidian";
+import {CompletrSettings} from "../settings";
 
 function countDollarSigns(str: string): number {
     let count = 0;
@@ -18,14 +19,17 @@ function countDollarSigns(str: string): number {
 
 function substringUntil(str: string, delimiter: string): string {
     let index = str.indexOf(delimiter);
-    if(index === -1)
+    if (index === -1)
         return str;
 
     return str.substring(0, index);
 }
 
 class LatexSuggestionProvider implements SuggestionProvider {
-    getSuggestions(context: EditorSuggestContext): string[] {
+    getSuggestions(context: EditorSuggestContext, limit: number, settings: CompletrSettings): string[] {
+        if (!settings.latexProviderEnabled)
+            return [];
+
         let editor = context.editor;
 
         let countBefore = countDollarSigns(

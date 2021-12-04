@@ -9,12 +9,16 @@ export const enum WordListInsertionMode {
 }
 
 export interface CompletrSettings {
+    latexProviderEnabled: boolean,
+    wordListProviderEnabled: boolean,
     wordListFiles: string[],
     wordListInsertionMode: WordListInsertionMode,
     minWordLength: number,
 }
 
 export const DEFAULT_SETTINGS: CompletrSettings = {
+    latexProviderEnabled: true,
+    wordListProviderEnabled: true,
     wordListFiles: [],
     wordListInsertionMode: WordListInsertionMode.IGNORE_CASE_REPLACE,
     minWordLength: 6,
@@ -23,6 +27,7 @@ export const DEFAULT_SETTINGS: CompletrSettings = {
 export default class CompletrSettingsTab extends PluginSettingTab {
 
     private plugin: CompletrPlugin;
+    private isReloadingWords: boolean;
 
     constructor(app: App, plugin: CompletrPlugin) {
         super(app, plugin);
@@ -52,8 +57,16 @@ export default class CompletrSettingsTab extends PluginSettingTab {
             });
 
         new Setting(containerEl)
+            .setName("Latex provider")
+            .setHeading();
+
+        this.createEnabledSetting("latexProviderEnabled", "Whether or not the latex provider is enabled", containerEl);
+
+        new Setting(containerEl)
             .setName("Word list provider")
             .setHeading();
+
+        this.createEnabledSetting("wordListProviderEnabled", "Whether or not the word list provider is enabled", containerEl);
 
         new Setting(containerEl)
             .setName("Suggestion mode")
@@ -92,19 +105,19 @@ export default class CompletrSettingsTab extends PluginSettingTab {
             if (oldLength === this.plugin.settings.wordListFiles.length)
                 return;
 
-            WordList.loadFromFiles(this.plugin.settings);
+            await this.reloadWords();
             await this.plugin.saveSettings();
             this.display();
         }
 
         new Setting(containerEl)
             .setName('Word list files')
-            .setDesc('A list of files which contain words to be used as suggestions.')
+            .setDesc('A list of files which contain words to be used as suggestions. Each word should be on its own line.')
             .addExtraButton(button => button
                 .setIcon("switch")
                 .setTooltip("Reload")
-                .onClick(() => {
-                    WordList.loadFromFiles(this.plugin.settings);
+                .onClick(async () => {
+                    await this.reloadWords();
                     //Refresh because loadFromFiles might have removed an invalid file
                     this.display();
                 }))
@@ -125,11 +138,30 @@ export default class CompletrSettingsTab extends PluginSettingTab {
                     .setTooltip("Remove")
                     .onClick(async () => {
                         this.plugin.settings.wordListFiles.remove(path);
-                        WordList.loadFromFiles(this.plugin.settings);
+                        await this.reloadWords();
                         await this.plugin.saveSettings();
                         this.display();
                     })
                 ).settingEl.addClass("completr-settings-list-item");
         }
+    }
+
+    private async reloadWords() {
+        if (this.isReloadingWords)
+            return;
+
+        this.isReloadingWords = true;
+        await WordList.loadFromFiles(this.plugin.settings);
+        this.isReloadingWords = false;
+    }
+
+    private createEnabledSetting(propertyName: keyof CompletrSettings, desc: string, container: HTMLElement) {
+        new Setting(container)
+            .setName("Enabled")
+            .setDesc(desc)
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings[propertyName] as boolean)
+                //@ts-ignore
+                .onChange((val) => this.plugin.settings[propertyName] = val));
     }
 }
