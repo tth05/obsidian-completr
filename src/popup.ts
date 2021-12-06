@@ -1,4 +1,4 @@
-import SuggestionProvider from "./provider/provider";
+import {SuggestionProvider} from "./provider/provider";
 import {Latex} from "./provider/latex_provider";
 import {WordList} from "./provider/word_list_provider";
 import {
@@ -14,7 +14,7 @@ import SnippetManager from "./snippet_manager";
 import {CompletrSettings} from "./settings";
 
 const MAX_LOOK_BACK_DISTANCE = 50;
-const SEPARATORS = " ,.[]{}()$*+-/\\?|&#";
+const SEPARATORS = " ,.[]{}()$*+-/\\?|&#'\"^";
 const PROVIDERS: SuggestionProvider[] = [Latex, WordList];
 
 export default class SuggestionPopup extends EditorSuggest<string> {
@@ -22,6 +22,8 @@ export default class SuggestionPopup extends EditorSuggest<string> {
      * Hacky variable to prevent the suggestion window from immediately re-opening after completing a suggestion
      */
     private justClosed: boolean;
+    private separatorChar: string;
+
     private readonly snippetManager: SnippetManager;
     private readonly settings: CompletrSettings;
 
@@ -34,12 +36,17 @@ export default class SuggestionPopup extends EditorSuggest<string> {
     getSuggestions(
         context: EditorSuggestContext
     ): string[] | Promise<string[]> {
-        if (!context.query) return [];
+        if (!context.query)
+            return [];
+
         let suggestions: string[] = [];
 
         const time = window.performance.now();
         for (let provider of PROVIDERS) {
-            suggestions = [...suggestions, ...provider.getSuggestions(context, 100 - suggestions.length, this.settings)];
+            suggestions = [...suggestions, ...provider.getSuggestions({
+                ...context,
+                separatorChar: this.separatorChar
+            }, this.settings)];
         }
 
         console.log((window.performance.now() - time));
@@ -60,8 +67,10 @@ export default class SuggestionPopup extends EditorSuggest<string> {
         //Find word in front of cursor
         for (let i = cursor.ch - 1; i >= lookBackEnd; i--) {
             const prevChar = editor.getRange({...cursor, ch: i}, {...cursor, ch: i + 1});
-            if (SEPARATORS.contains(prevChar))
+            if (SEPARATORS.contains(prevChar)) {
+                this.separatorChar = prevChar;
                 break;
+            }
 
             query = prevChar + query;
         }

@@ -1,4 +1,4 @@
-import SuggestionProvider from "./provider";
+import {SuggestionContext, SuggestionProvider} from "./provider";
 import {EditorSuggestContext} from "obsidian";
 import {CompletrSettings} from "../settings";
 
@@ -26,7 +26,7 @@ function substringUntil(str: string, delimiter: string): string {
 }
 
 class LatexSuggestionProvider implements SuggestionProvider {
-    getSuggestions(context: EditorSuggestContext, limit: number, settings: CompletrSettings): string[] {
+    getSuggestions(context: SuggestionContext, settings: CompletrSettings): string[] {
         if (!settings.latexProviderEnabled)
             return [];
 
@@ -40,13 +40,13 @@ class LatexSuggestionProvider implements SuggestionProvider {
         if (countBefore % 2 !== 1)
             return [];
 
-        //This makes sure that matches like "\vee" are ranked before "\curlyvee" if the query is "\vee"
         return LATEX_COMMANDS.filter((s) => s.contains(context.query))
             .map((s) => ({
-                s: s,
+                s: context.separatorChar === "\\" ? s.substring(1) : s, //TODO: Removes the backlash from the display name, doesn't look nice
                 priority: s.indexOf(context.query),
             }))
             .sort((a, b) => {
+                //This makes sure that matches like "\vee" are ranked before "\curlyvee" if the query is "\vee"
                 let val = a.priority - b.priority;
                 if (val == 0)
                     val = substringUntil(a.s, "{").length - substringUntil(b.s, "{").length;

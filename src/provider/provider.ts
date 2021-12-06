@@ -1,6 +1,10 @@
 import {EditorSuggestContext} from "obsidian";
 import {CompletrSettings} from "../settings";
 
-export default interface SuggestionProvider {
-    getSuggestions(context: EditorSuggestContext, limit: number, settings: CompletrSettings): string[]
+export interface SuggestionContext extends EditorSuggestContext {
+    separatorChar: string;
+}
+
+export interface SuggestionProvider {
+    getSuggestions(context: SuggestionContext, settings: CompletrSettings): string[]
 }
