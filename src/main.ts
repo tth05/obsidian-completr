@@ -109,6 +109,11 @@ export default class CompletrPlugin extends Plugin {
         if (!view)
             return;
 
+        if (event.shiftKey) {
+            this.suggestionPopup.close();
+            return;
+        }
+
         const editor = view.editor;
 
         let placeholder = this.snippetManager.placeholderAtPos(editor, editor.getCursor());
