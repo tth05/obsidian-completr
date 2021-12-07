@@ -1,5 +1,4 @@
 import {SuggestionContext, SuggestionProvider} from "./provider";
-import {EditorSuggestContext} from "obsidian";
 import {CompletrSettings} from "../settings";
 
 function countDollarSigns(str: string): number {
@@ -471,11 +470,11 @@ const LATEX_COMMANDS = [
     "\\maltese",
     "\\mapsto",
     "\\mathbb{#}",
+    "\\mathbb{R}",
     "\\mathbb{N}",
+    "\\mathbb{C}",
     "\\mathbb{Z}",
     "\\mathbb{Q}",
-    "\\mathbb{R}",
-    "\\mathbb{C}",
     "\\mathbf{#}",
     "\\mathbfcal{#}",
     "\\mathbffrak{#}",
@@ -513,7 +512,6 @@ const LATEX_COMMANDS = [
     "\\mathtip{#}{#}",
     "\\mathtt{#}",
     "\\mathup{#}",
-    "\\matrix{#}",
     "\\max",
     "\\mbox{#}",
     "\\measuredangle",
@@ -626,7 +624,6 @@ const LATEX_COMMANDS = [
     "\\Pi",
     "\\pitchfork",
     "\\pm",
-    "\\pmatrix{#}",
     "\\pmb{#}",
     "\\pmod{#}",
     "\\pod{#}",

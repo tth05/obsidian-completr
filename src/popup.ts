@@ -14,7 +14,7 @@ import SnippetManager from "./snippet_manager";
 import {CompletrSettings} from "./settings";
 
 const MAX_LOOK_BACK_DISTANCE = 50;
-const SEPARATORS = " ,.[]{}()$*+-/\\?|&#'\"^";
+const SEPARATORS = " ,.[]{}()$*+-/\\?|&#'\"^=:_";
 const PROVIDERS: SuggestionProvider[] = [Latex, WordList];
 
 export default class SuggestionPopup extends EditorSuggest<string> {
@@ -41,7 +41,6 @@ export default class SuggestionPopup extends EditorSuggest<string> {
 
         let suggestions: string[] = [];
 
-        const time = window.performance.now();
         for (let provider of PROVIDERS) {
             suggestions = [...suggestions, ...provider.getSuggestions({
                 ...context,
@@ -49,7 +48,6 @@ export default class SuggestionPopup extends EditorSuggest<string> {
             }, this.settings)];
         }
 
-        console.log((window.performance.now() - time));
         return suggestions;
     }
 
@@ -60,6 +58,8 @@ export default class SuggestionPopup extends EditorSuggest<string> {
         }
         if (cursor.ch == 0)
             return null;
+
+        this.separatorChar = null;
 
         let query = "";
         //Save some time for very long lines
