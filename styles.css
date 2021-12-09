@@ -7,6 +7,10 @@
     border-style: solid;
 }
 
+.completr-settings-no-border {
+    border: none;
+}
+
 .completr-settings-list-item {
     border-top: 1px solid grey;
     padding: 4px 0 0 0;

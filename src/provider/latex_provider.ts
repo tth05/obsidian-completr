@@ -24,6 +24,7 @@ function substringUntil(str: string, delimiter: string): string {
     return str.substring(0, index);
 }
 
+//TODO: Environment completion, \begin{...}{} \end{...}
 class LatexSuggestionProvider implements SuggestionProvider {
     getSuggestions(context: SuggestionContext, settings: CompletrSettings): string[] {
         if (!settings.latexProviderEnabled)
@@ -41,7 +42,7 @@ class LatexSuggestionProvider implements SuggestionProvider {
 
         return LATEX_COMMANDS.filter((s) => s.contains(context.query))
             .map((s) => ({
-                s: context.separatorChar === "\\" ? s.substring(1) : s, //TODO: Removes the backlash from the display name, doesn't look nice
+                s: context.separatorChar === "\\" ? s.substring(1) : s, //TODO: Removes the backlash from the display name, doesn't look nice -> Add a way to display a different display name
                 priority: s.indexOf(context.query),
             }))
             .sort((a, b) => {

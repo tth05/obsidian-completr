@@ -1,6 +1,7 @@
 import {SuggestionProvider} from "./provider/provider";
 import {Latex} from "./provider/latex_provider";
 import {WordList} from "./provider/word_list_provider";
+import {FileScanner} from "./provider/scanner_provider";
 import {
     App,
     Editor,
@@ -13,9 +14,7 @@ import {
 import SnippetManager from "./snippet_manager";
 import {CompletrSettings} from "./settings";
 
-const MAX_LOOK_BACK_DISTANCE = 50;
-const SEPARATORS = " ,.[]{}()$*+-/\\?|&#'\"^=:_";
-const PROVIDERS: SuggestionProvider[] = [Latex, WordList];
+const PROVIDERS: SuggestionProvider[] = [Latex, FileScanner, WordList];
 
 export default class SuggestionPopup extends EditorSuggest<string> {
     /**
@@ -63,11 +62,11 @@ export default class SuggestionPopup extends EditorSuggest<string> {
 
         let query = "";
         //Save some time for very long lines
-        let lookBackEnd = Math.max(0, cursor.ch - MAX_LOOK_BACK_DISTANCE);
+        let lookBackEnd = Math.max(0, cursor.ch - this.settings.maxLookBackDistance);
         //Find word in front of cursor
         for (let i = cursor.ch - 1; i >= lookBackEnd; i--) {
             const prevChar = editor.getRange({...cursor, ch: i}, {...cursor, ch: i + 1});
-            if (SEPARATORS.contains(prevChar)) {
+            if (this.settings.wordSeparators.contains(prevChar)) {
                 this.separatorChar = prevChar;
                 break;
             }

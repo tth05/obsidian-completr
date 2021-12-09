@@ -1,13 +1,15 @@
 import {
     MarkdownView,
-    Plugin,
+    Plugin, TFile,
 } from "obsidian";
 import * as CodeMirror from "codemirror";
 import SnippetManager from "./snippet_manager";
 import {MarkerRange} from "codemirror";
 import SuggestionPopup from "./popup";
-import CompletrSettingsTab, {CompletrSettings, DEFAULT_SETTINGS} from "./settings";
+import {CompletrSettings, DEFAULT_SETTINGS} from "./settings";
 import {WordList} from "./provider/word_list_provider";
+import {FileScanner} from "./provider/scanner_provider";
+import CompletrSettingsTab from "./settings_tab";
 
 export default class CompletrPlugin extends Plugin {
 
@@ -31,7 +33,10 @@ export default class CompletrPlugin extends Plugin {
             cm.on('cursorActivity', this.handleCursorActivity);
         });
 
+        this.app.workspace.on('file-open', this.onFileOpened, this);
+
         this.addSettingTab(new CompletrSettingsTab(this.app, this));
+
 
         //TODO: Manual triggering of popup, requires some hackery?
         /*this.addCommand({
@@ -57,33 +62,39 @@ export default class CompletrPlugin extends Plugin {
         })*/
 
         //TODO: Settings
-        // - Insertion mode: Replace, Append
         // - Auto trigger
         // - Customize "rainbow" colors for nested snippets
-        // - Specify word separators
-        // - Max look back distance
-        // - Disable file scanning
         // - Delay between scanned lines
-        // - Only remember scanned words over length X
     }
 
-    onunload() {
+    async onunload() {
         this.app.workspace.iterateCodeMirrors((cm) => {
             cm.off('keydown', this.handleKeydown);
             cm.off('beforeChange', this.handleBeforeChange);
             cm.off('cursorActivity', this.handleCursorActivity);
         })
 
+        this.app.workspace.off('file-open', this.onFileOpened);
+
         this.snippetManager.onunload();
+        await FileScanner.saveData(this.app.vault);
     }
 
     async loadSettings() {
         this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
         await WordList.loadFromFiles(this.settings);
+        await FileScanner.loadData(this.app.vault);
     }
 
     async saveSettings() {
         await this.saveData(this.settings);
+    }
+
+    private readonly onFileOpened = (file: TFile) => {
+        if (!this.settings.fileScannerScanCurrent)
+            return;
+
+        FileScanner.scanFile(this.settings, file, true);
     }
 
     private readonly handleBeforeChange = (cm: CodeMirror.Editor) => {

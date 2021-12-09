@@ -1,46 +1,10 @@
-import {SuggestionContext, SuggestionProvider} from "./provider";
-import {CompletrSettings, WordListInsertionMode} from "../settings";
+import {CompletrSettings} from "../settings";
 import {readFile} from "fs/promises";
+import {DictionaryProvider} from "./dictionary_provider";
 
-class WordListSuggestionProvider implements SuggestionProvider {
+class WordListSuggestionProvider extends DictionaryProvider {
 
-    private wordMap: Map<string, string[]> = new Map<string, string[]>();
-
-    getSuggestions(context: SuggestionContext, settings: CompletrSettings): string[] {
-        if (!settings.wordListProviderEnabled)
-            return [];
-
-        const ignoreCase = settings.wordListInsertionMode != WordListInsertionMode.MATCH_CASE_REPLACE;
-        const query = ignoreCase ? context.query.toLowerCase() : context.query;
-        const firstChar = query.charAt(0);
-
-        //This is an array of arrays to avoid unnecessarily creating a new huge array containing all elements of both arrays.
-        const list = ignoreCase ?
-            [(this.wordMap.get(firstChar) ?? []), (this.wordMap.get(firstChar.toUpperCase()) ?? [])] //Get both lists if we're ignoring case
-            :
-            [this.wordMap.get(firstChar)];
-
-        if (!list || list.length < 1)
-            return [];
-
-        //TODO: Rank those who match case higher
-        let result: string[] = [];
-        for (let el of list) {
-            result = [...result, ...el.filter(s => {
-                const match = ignoreCase ? s.toLowerCase() : s;
-                return match.startsWith(query);
-            })];
-        }
-
-        result = result.sort((a, b) => a.length - b.length);
-
-        //In append mode we combine the query with the suggestions
-        if (settings.wordListInsertionMode === WordListInsertionMode.IGNORE_CASE_APPEND) {
-            result = result.map(s => query + s.substring(query.length, s.length));
-        }
-
-        return result;
-    }
+    readonly wordMap: Map<string, string[]> = new Map<string, string[]>();
 
     async loadFromFiles(settings: CompletrSettings) {
         this.wordMap.clear();
