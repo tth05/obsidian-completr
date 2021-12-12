@@ -99,6 +99,24 @@ export default class CompletrSettingsTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
+            .setName("Word character regex")
+            .setDesc("A regular expression which matches a character of a word. All repetitions of this character regex will be saved as valid words.")
+            .addText(text => text
+                .setValue(this.plugin.settings.fileScannerCharacterRegex)
+                .onChange(async val => {
+                    try {
+                        //Check if regex is valid
+                        new RegExp("[" + val + "]+").test("");
+                        text.inputEl.removeClass("completr-settings-error");
+                        this.plugin.settings.fileScannerCharacterRegex = val;
+                        await this.plugin.saveSettings();
+                    } catch (e) {
+                        text.inputEl.addClass("completr-settings-error");
+                        //TODO: Tell the user about the wrong syntax
+                    }
+                }));
+
+        new Setting(containerEl)
             .setName("Word list provider")
             .setHeading();
 

@@ -1,6 +1,7 @@
 import {TFile, Vault} from "obsidian";
 import {CompletrSettings} from "../settings";
 import {DictionaryProvider} from "./dictionary_provider";
+import {log} from "util";
 
 const SCANNED_WORDS_PATH = ".obsidian/plugins/obsidian-completr/scanned_words.txt"
 
@@ -9,39 +10,23 @@ class ScannerSuggestionProvider extends DictionaryProvider {
     readonly wordMap: Map<string, Set<string>> = new Map<string, Set<string>>();
 
     async scanFiles(settings: CompletrSettings, files: TFile[]) {
-        const t = window.performance.now();
         for (let file of files) {
             await this.scanFile(settings, file, false);
         }
 
         await this.saveData(files[0].vault);
-        //TODO: remove debug statement
-        console.log(window.performance.now() - t);
     }
 
     async scanFile(settings: CompletrSettings, file: TFile, saveImmediately: boolean) {
-        const contents = (await file.vault.cachedRead(file)).split("\n");
+        const contents = await file.vault.cachedRead(file);
 
-        //TODO: Don't save words while in any environment ```, $, $$, [[
-        for (let line of contents) {
-            let currentWord = "";
-            for (let i = 0; i < line.length; i++) {
-                const c = line.charAt(i);
-                if (settings.wordSeparators.contains(c) || i === line.length - 1) {
-                    if (!currentWord || currentWord.length < settings.minWordLength) {
-                        currentWord = "";
-                        continue;
-                    }
+        const regex = new RegExp("\\$+.*?\\$+|`+.*?`+|\\[+.*?]+|([" + settings.fileScannerCharacterRegex + "]+)", "gms");
+        for (let match of contents.matchAll(regex)) {
+            const groupValue = match[1];
+            if (!groupValue || groupValue.length < settings.minWordLength)
+                continue;
 
-                    if (i === line.length - 1)
-                        currentWord += c;
-                    this.addWord(currentWord);
-                    currentWord = "";
-                    continue;
-                }
-
-                currentWord += c;
-            }
+            this.addWord(groupValue);
         }
 
         if (saveImmediately)
@@ -58,6 +43,9 @@ class ScannerSuggestionProvider extends DictionaryProvider {
     }
 
     async loadData(vault: Vault) {
+        if (!(await vault.adapter.exists(SCANNED_WORDS_PATH)))
+            return
+
         const contents = (await vault.adapter.read(SCANNED_WORDS_PATH)).split("\n");
         for (let word of contents) {
             this.addWord(word);

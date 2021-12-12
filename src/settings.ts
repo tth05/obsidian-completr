@@ -11,18 +11,20 @@ export interface CompletrSettings {
     latexProviderEnabled: boolean,
     fileScannerProviderEnabled: boolean,
     fileScannerScanCurrent: boolean,
+    fileScannerCharacterRegex: string,
     wordListProviderEnabled: boolean,
     wordListFiles: string[],
     wordListInsertionMode: WordListInsertionMode,
 }
 
 export const DEFAULT_SETTINGS: CompletrSettings = {
-    wordSeparators: " ,.[]{}()$*+-/\?|&#'\"^=:_<>",
+    wordSeparators: " ,.[]{}()$*+-/\?|&#´'`\"^=:_<>%",
     maxLookBackDistance: 50,
     minWordLength: 6,
     latexProviderEnabled: true,
     fileScannerProviderEnabled: true,
     fileScannerScanCurrent: true,
+    fileScannerCharacterRegex: "a-zA-ZöäüÖÄÜß",
     wordListProviderEnabled: true,
     wordListFiles: [],
     wordListInsertionMode: WordListInsertionMode.IGNORE_CASE_REPLACE,

@@ -62,9 +62,7 @@ export default class CompletrPlugin extends Plugin {
         })*/
 
         //TODO: Settings
-        // - Auto trigger
         // - Customize "rainbow" colors for nested snippets
-        // - Delay between scanned lines
     }
 
     async onunload() {
@@ -97,7 +95,7 @@ export default class CompletrPlugin extends Plugin {
         FileScanner.scanFile(this.settings, file, true);
     }
 
-    private readonly handleBeforeChange = (cm: CodeMirror.Editor) => {
+    private readonly handleBeforeChange = () => {
         this.cursorTriggeredByChange = true;
     };
 
