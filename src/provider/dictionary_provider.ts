@@ -5,8 +5,10 @@ export abstract class DictionaryProvider implements SuggestionProvider {
 
     abstract readonly wordMap: Map<string, Iterable<string>>;
 
+    abstract isEnabled(settings: CompletrSettings): boolean;
+
     getSuggestions(context: SuggestionContext, settings: CompletrSettings): string[] {
-        if (!settings.wordListProviderEnabled)
+        if (!this.isEnabled(settings))
             return [];
 
         const ignoreCase = settings.wordListInsertionMode != WordListInsertionMode.MATCH_CASE_REPLACE;

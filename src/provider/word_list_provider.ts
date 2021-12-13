@@ -6,6 +6,10 @@ class WordListSuggestionProvider extends DictionaryProvider {
 
     readonly wordMap: Map<string, string[]> = new Map<string, string[]>();
 
+    isEnabled(settings: CompletrSettings): boolean {
+        return settings.wordListProviderEnabled;
+    }
+
     async loadFromFiles(settings: CompletrSettings) {
         this.wordMap.clear();
 

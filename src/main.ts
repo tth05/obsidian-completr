@@ -118,17 +118,23 @@ export default class CompletrPlugin extends Plugin {
         if (!view)
             return;
 
+        const editor = view.editor;
+        const placeholder = this.snippetManager.placeholderAtPos(editor, editor.getCursor());
+
+        //Pass through enter and tab when holding shift. Allows going to the next line while the popup is open
         if (event.shiftKey) {
             this.suggestionPopup.close();
-            return;
+            if (!placeholder) {
+                //Hack: Dispatch the event again to properly continue lists and other obsidian formatting features.
+                let keyboardEvent = new KeyboardEvent(event.type, {key: event.key, altKey: event.altKey, keyCode: event.keyCode, charCode: event.charCode});
+                cm.getInputField().dispatchEvent(keyboardEvent);
+                event.preventDefault();
+            }
         }
 
-        const editor = view.editor;
-
-        let placeholder = this.snippetManager.placeholderAtPos(editor, editor.getCursor());
         if (!placeholder)
             return;
-        let placeholderEnd = (placeholder.marker.find() as MarkerRange).to
+        const placeholderEnd = (placeholder.marker.find() as MarkerRange).to;
 
         event.preventDefault();
         if (!this.snippetManager.consumeAndGotoNextMarker(editor)) {

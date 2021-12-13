@@ -9,6 +9,10 @@ class ScannerSuggestionProvider extends DictionaryProvider {
 
     readonly wordMap: Map<string, Set<string>> = new Map<string, Set<string>>();
 
+    isEnabled(settings: CompletrSettings): boolean {
+        return settings.fileScannerProviderEnabled;
+    }
+
     async scanFiles(settings: CompletrSettings, files: TFile[]) {
         for (let file of files) {
             await this.scanFile(settings, file, false);
@@ -58,6 +62,9 @@ class ScannerSuggestionProvider extends DictionaryProvider {
     }
 
     private addWord(word: string) {
+        if (!word)
+            return;
+
         let list = this.wordMap.get(word.charAt(0));
         if (!list) {
             list = new Set<string>();
