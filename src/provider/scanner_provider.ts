@@ -1,7 +1,6 @@
 import {TFile, Vault} from "obsidian";
 import {CompletrSettings} from "../settings";
 import {DictionaryProvider} from "./dictionary_provider";
-import {log} from "util";
 
 const SCANNED_WORDS_PATH = ".obsidian/plugins/obsidian-completr/scanned_words.txt"
 
