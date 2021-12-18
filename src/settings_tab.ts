@@ -20,14 +20,21 @@ export default class CompletrSettingsTab extends PluginSettingTab {
         containerEl.empty();
 
         new Setting(containerEl)
-            .setName("Word separators")
-            .setDesc("All characters which determine where a word starts and where a word ends. Used during suggestion and by the file scanner.")
+            .setName("Word character regex")
+            .setDesc("A regular expression which matches a character of a word. Used by during completion to find the word to the left of the cursor and used by the file scanner to find valid words.")
             .addText(text => text
-                .setValue(this.plugin.settings.wordSeparators)
+                .setValue(this.plugin.settings.characterRegex)
                 .onChange(async val => {
-                    this.plugin.settings.wordSeparators = val;
-                    await this.plugin.saveSettings();
-                }))
+                    try {
+                        //Check if regex is valid
+                        new RegExp("[" + val + "]+").test("");
+                        text.inputEl.removeClass("completr-settings-error");
+                        this.plugin.settings.characterRegex = val;
+                        await this.plugin.saveSettings();
+                    } catch (e) {
+                        text.inputEl.addClass("completr-settings-error");
+                    }
+                }));
 
         new Setting(containerEl)
             .setName("Minimum word length")
@@ -96,23 +103,6 @@ export default class CompletrSettingsTab extends PluginSettingTab {
                 .onChange(async val => {
                     this.plugin.settings.fileScannerScanCurrent = val;
                     await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName("Word character regex")
-            .setDesc("A regular expression which matches a character of a word. All repetitions of this character regex will be saved as valid words.")
-            .addText(text => text
-                .setValue(this.plugin.settings.fileScannerCharacterRegex)
-                .onChange(async val => {
-                    try {
-                        //Check if regex is valid
-                        new RegExp("[" + val + "]+").test("");
-                        text.inputEl.removeClass("completr-settings-error");
-                        this.plugin.settings.fileScannerCharacterRegex = val;
-                        await this.plugin.saveSettings();
-                    } catch (e) {
-                        text.inputEl.addClass("completr-settings-error");
-                    }
                 }));
 
         new Setting(containerEl)

@@ -23,6 +23,9 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
     private justClosed: boolean;
     private separatorChar: string;
 
+    private characterRegex: string;
+    private compiledCharacterRegex: RegExp;
+
     private readonly snippetManager: SnippetManager;
     private readonly settings: CompletrSettings;
 
@@ -66,7 +69,7 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
         //Find word in front of cursor
         for (let i = cursor.ch - 1; i >= lookBackEnd; i--) {
             const prevChar = editor.getRange({...cursor, ch: i}, {...cursor, ch: i + 1});
-            if (this.settings.wordSeparators.contains(prevChar)) {
+            if (!this.getCharacterRegex().test(prevChar)) {
                 this.separatorChar = prevChar;
                 break;
             }
@@ -100,5 +103,12 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
 
         this.close();
         this.justClosed = true;
+    }
+
+    private getCharacterRegex(): RegExp {
+        if (this.characterRegex !== this.settings.characterRegex)
+            this.compiledCharacterRegex = new RegExp("[" + this.settings.characterRegex + "]");
+
+        return this.compiledCharacterRegex;
     }
 }

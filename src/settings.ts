@@ -5,28 +5,25 @@ export const enum WordListInsertionMode {
 }
 
 export interface CompletrSettings {
-    wordSeparators: string,
+    characterRegex: string,
     maxLookBackDistance: number,
     minWordLength: number,
     latexProviderEnabled: boolean,
     fileScannerProviderEnabled: boolean,
     fileScannerScanCurrent: boolean,
-    fileScannerCharacterRegex: string,
     wordListProviderEnabled: boolean,
     wordListFiles: string[],
     wordListInsertionMode: WordListInsertionMode,
 }
 
 export const DEFAULT_SETTINGS: CompletrSettings = {
-    wordSeparators: " ,.[]{}()$*+-/\\?|&#´'`\"^=:_<>%",
+    characterRegex: "a-zA-ZöäüÖÄÜß",
     maxLookBackDistance: 50,
     minWordLength: 6,
     latexProviderEnabled: true,
     fileScannerProviderEnabled: true,
     fileScannerScanCurrent: true,
-    fileScannerCharacterRegex: "a-zA-ZöäüÖÄÜß",
     wordListProviderEnabled: true,
     wordListFiles: [],
     wordListInsertionMode: WordListInsertionMode.IGNORE_CASE_REPLACE,
 }
-
