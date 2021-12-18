@@ -1,4 +1,4 @@
-import {SuggestionProvider} from "./provider/provider";
+import {getSuggestionDisplayName, getSuggestionReplacement, Suggestion, SuggestionProvider} from "./provider/provider";
 import {Latex} from "./provider/latex_provider";
 import {WordList} from "./provider/word_list_provider";
 import {FileScanner} from "./provider/scanner_provider";
@@ -16,7 +16,7 @@ import {CompletrSettings} from "./settings";
 
 const PROVIDERS: SuggestionProvider[] = [Latex, FileScanner, WordList];
 
-export default class SuggestionPopup extends EditorSuggest<string> {
+export default class SuggestionPopup extends EditorSuggest<Suggestion> {
     /**
      * Hacky variable to prevent the suggestion window from immediately re-opening after completing a suggestion
      */
@@ -34,11 +34,11 @@ export default class SuggestionPopup extends EditorSuggest<string> {
 
     getSuggestions(
         context: EditorSuggestContext
-    ): string[] | Promise<string[]> {
+    ): Suggestion[] | Promise<Suggestion[]> {
         if (!context.query)
             return [];
 
-        let suggestions: string[] = [];
+        let suggestions: Suggestion[] = [];
 
         for (let provider of PROVIDERS) {
             suggestions = [...suggestions, ...provider.getSuggestions({
@@ -84,17 +84,18 @@ export default class SuggestionPopup extends EditorSuggest<string> {
         };
     }
 
-    renderSuggestion(value: string, el: HTMLElement): void {
+    renderSuggestion(value: Suggestion, el: HTMLElement): void {
         el.addClass("completr-suggestion-item");
-        el.setText(value);
+        el.setText(getSuggestionDisplayName(value));
     }
 
-    selectSuggestion(value: string, evt: MouseEvent | KeyboardEvent): void {
-        this.context.editor.replaceRange(value, this.context.start, this.context.end);
+    selectSuggestion(value: Suggestion, evt: MouseEvent | KeyboardEvent): void {
+        const replacement = getSuggestionReplacement(value);
+        this.context.editor.replaceRange(replacement, this.context.start, this.context.end);
 
         //Check if suggestion is a snippet
-        if (value.contains("#")) {
-            this.snippetManager.handleSnippet(value, this.context.start, this.context.editor);
+        if (replacement.contains("#")) {
+            this.snippetManager.handleSnippet(replacement, this.context.start, this.context.editor);
         }
 
         this.close();

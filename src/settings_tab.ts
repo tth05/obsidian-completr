@@ -112,7 +112,6 @@ export default class CompletrSettingsTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                     } catch (e) {
                         text.inputEl.addClass("completr-settings-error");
-                        //TODO: Tell the user about the wrong syntax
                     }
                 }));
 

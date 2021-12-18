@@ -18,7 +18,7 @@ export interface CompletrSettings {
 }
 
 export const DEFAULT_SETTINGS: CompletrSettings = {
-    wordSeparators: " ,.[]{}()$*+-/\?|&#´'`\"^=:_<>%",
+    wordSeparators: " ,.[]{}()$*+-/\\?|&#´'`\"^=:_<>%",
     maxLookBackDistance: 50,
     minWordLength: 6,
     latexProviderEnabled: true,

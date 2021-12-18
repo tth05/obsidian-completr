@@ -1,4 +1,4 @@
-import {SuggestionContext, SuggestionProvider} from "./provider";
+import {Suggestion, SuggestionContext, SuggestionProvider} from "./provider";
 import {CompletrSettings} from "../settings";
 
 function countDollarSigns(str: string): number {
@@ -26,7 +26,7 @@ function substringUntil(str: string, delimiter: string): string {
 
 //TODO: Environment completion, \begin{...}{} \end{...}
 class LatexSuggestionProvider implements SuggestionProvider {
-    getSuggestions(context: SuggestionContext, settings: CompletrSettings): string[] {
+    getSuggestions(context: SuggestionContext, settings: CompletrSettings): Suggestion[] {
         if (!settings.latexProviderEnabled)
             return [];
 
@@ -40,9 +40,10 @@ class LatexSuggestionProvider implements SuggestionProvider {
         if (countBefore % 2 !== 1)
             return [];
 
+        const isSeparatorBackslash = context.separatorChar === "\\";
         return LATEX_COMMANDS.filter((s) => s.contains(context.query))
             .map((s) => ({
-                s: context.separatorChar === "\\" ? s.substring(1) : s, //TODO: Removes the backlash from the display name, doesn't look nice -> Add a way to display a different display name
+                s: isSeparatorBackslash ? s.substring(1) : s, //TODO: Removes the backlash from the display name, doesn't look nice -> Add a way to display a different display name
                 priority: s.indexOf(context.query),
             }))
             .sort((a, b) => {
@@ -52,14 +53,14 @@ class LatexSuggestionProvider implements SuggestionProvider {
                     val = substringUntil(a.s, "{").length - substringUntil(b.s, "{").length;
                 return val;
             })
-            .map((t) => t.s);
+            .map((t) => isSeparatorBackslash ? {replacement: t.s, displayName: "\\" + t.s} : t.s);
     }
 }
 
 export const Latex = new LatexSuggestionProvider();
 
 const LATEX_COMMANDS = [
-    "\\above #",
+    "\\above{#}{#}",
     "\\verb|#|",
     "\\left\\",
     "\\right\\",
