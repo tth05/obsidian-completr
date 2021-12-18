@@ -2,7 +2,7 @@ import {MarkerRange, TextMarker} from "codemirror";
 import {Editor, EditorPosition} from "obsidian";
 import * as CodeMirror from "codemirror";
 
-const COLORS = ["lightskyblue", "cornsilk", "orange", "pink", "green", "magenta", "navajowhite"];
+const COLORS = ["lightskyblue", "orange", "lime", "pink",  "cornsilk", "magenta", "navajowhite"];
 
 export type SnippetPlaceholder = {
     marker: TextMarker,

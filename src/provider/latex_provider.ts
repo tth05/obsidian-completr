@@ -43,7 +43,7 @@ class LatexSuggestionProvider implements SuggestionProvider {
         const isSeparatorBackslash = context.separatorChar === "\\";
         return LATEX_COMMANDS.filter((s) => s.contains(context.query))
             .map((s) => ({
-                s: isSeparatorBackslash ? s.substring(1) : s, //TODO: Removes the backlash from the display name, doesn't look nice -> Add a way to display a different display name
+                s: isSeparatorBackslash ? s.substring(1) : s,
                 priority: s.indexOf(context.query),
             }))
             .sort((a, b) => {

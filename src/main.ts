@@ -39,27 +39,20 @@ export default class CompletrPlugin extends Plugin {
 
 
         //TODO: Manual triggering of popup, requires some hackery?
-        /*this.addCommand({
+        this.addCommand({
             id: 'completr-open-suggestion-popup',
             name: 'Open suggestion popup',
             hotkeys: [
                 {
-                    key: "Space",
+                    key: " ",
                     modifiers: ["Mod"]
                 }
             ],
             editorCallback: (editor) => {
-                const info = this.suggestionPopup.getSuggestions();
-                if(!info)
-                    return;
-                const context = {
-                    ...info,
-                    editor: editor,
-                    file: theActiveFile
-                }
-                this.suggestionPopup.showSuggestions(this.suggestionPopup.getSuggestions(context));
+                //This is the same function that is called by obsidian when you type a character
+                (this.suggestionPopup as any).trigger(editor, this.app.workspace.getActiveFile(), true);
             }
-        })*/
+        })
 
         //TODO: Settings
         // - Customize "rainbow" colors for nested snippets
@@ -126,7 +119,12 @@ export default class CompletrPlugin extends Plugin {
             this.suggestionPopup.close();
             if (!placeholder) {
                 //Hack: Dispatch the event again to properly continue lists and other obsidian formatting features.
-                let keyboardEvent = new KeyboardEvent(event.type, {key: event.key, altKey: event.altKey, keyCode: event.keyCode, charCode: event.charCode});
+                let keyboardEvent = new KeyboardEvent(event.type, {
+                    key: event.key,
+                    altKey: event.altKey,
+                    keyCode: event.keyCode,
+                    charCode: event.charCode
+                });
                 cm.getInputField().dispatchEvent(keyboardEvent);
                 event.preventDefault();
             }
