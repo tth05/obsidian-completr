@@ -97,7 +97,7 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
         this.context.editor.replaceRange(replacement, this.context.start, this.context.end);
 
         //Check if suggestion is a snippet
-        if (replacement.contains("#")) {
+        if (replacement.contains("#") || replacement.contains("~")) {
             this.snippetManager.handleSnippet(replacement, this.context.start, this.context.editor);
         }
 

@@ -1,4 +1,10 @@
-import {Suggestion, SuggestionContext, SuggestionProvider} from "./provider";
+import {
+    getSuggestionDisplayName,
+    getSuggestionReplacement,
+    Suggestion,
+    SuggestionContext,
+    SuggestionProvider
+} from "./provider";
 import {CompletrSettings} from "../settings";
 
 function countDollarSigns(str: string): number {
@@ -41,25 +47,93 @@ class LatexSuggestionProvider implements SuggestionProvider {
             return [];
 
         const isSeparatorBackslash = context.separatorChar === "\\";
-        return LATEX_COMMANDS.filter((s) => s.contains(context.query))
-            .map((s) => ({
-                s: isSeparatorBackslash ? s.substring(1) : s,
-                priority: s.indexOf(context.query),
-            }))
+        return LATEX_COMMANDS.filter((s) => getSuggestionDisplayName(s).contains(context.query))
+            .map((s) => {
+                const replacement = getSuggestionReplacement(s);
+                const displayName = getSuggestionDisplayName(s);
+                return ({
+                    displayName: displayName,
+                    replacement: isSeparatorBackslash ? replacement.substring(1) : replacement,
+                    priority: displayName.indexOf(context.query),
+                });
+            })
             .sort((a, b) => {
                 //This makes sure that matches like "\vee" are ranked before "\curlyvee" if the query is "\vee"
                 let val = a.priority - b.priority;
                 if (val == 0)
-                    val = substringUntil(a.s, "{").length - substringUntil(b.s, "{").length;
+                    val = substringUntil(a.displayName, "{").length - substringUntil(b.displayName, "{").length;
                 return val;
-            })
-            .map((t) => isSeparatorBackslash ? {replacement: t.s, displayName: "\\" + t.s} : t.s);
+            });
     }
 }
 
 export const Latex = new LatexSuggestionProvider();
 
-const LATEX_COMMANDS = [
+function generateEnvironments(environments: { name: string, paramCount: number, hasStarVersion: boolean }[]): Suggestion[] {
+    const result = [];
+
+    for (let i = 0; i < environments.length; i++) {
+        const environment = environments[i];
+        if (environment.hasStarVersion) {
+            environments.push({...environment, name: environment.name + "*", hasStarVersion: false});
+        }
+
+        result.push({
+            displayName: `\\begin{${environment.name}}...`,
+            replacement:
+                `\\begin{${environment.name}}${"{#}".repeat(environment.paramCount)}\n` +
+                `${environment.paramCount < 1 ? "~\n" : ""}` +
+                `\\end{${environment.name}}`
+        });
+    }
+
+    return result;
+}
+
+const LATEX_COMMANDS: Suggestion[] = [
+    ...generateEnvironments([
+        {name: "align", paramCount: 0, hasStarVersion: true},
+        {name: "alignat", paramCount: 1, hasStarVersion: true},
+        {name: "aligned", paramCount: 0, hasStarVersion: false},
+        {name: "alignedat", paramCount: 1, hasStarVersion: false},
+        {name: "array", paramCount: 1, hasStarVersion: false},
+        {name: "bmatrix", paramCount: 0, hasStarVersion: true},
+        {name: "Bmatrix", paramCount: 0, hasStarVersion: true},
+        {name: "bsmallmatrix", paramCount: 0, hasStarVersion: true},
+        {name: "Bsmallmatrix", paramCount: 0, hasStarVersion: true},
+        {name: "cases", paramCount: 0, hasStarVersion: true},
+        {name: "crampedsubarray", paramCount: 1, hasStarVersion: false},
+        {name: "dcases", paramCount: 0, hasStarVersion: true},
+        {name: "drcases", paramCount: 0, hasStarVersion: true},
+        {name: "empheq", paramCount: 2, hasStarVersion: false},
+        {name: "eqnarray", paramCount: 0, hasStarVersion: true},
+        {name: "equation", paramCount: 0, hasStarVersion: true},
+        {name: "flalign", paramCount: 0, hasStarVersion: true},
+        {name: "gather", paramCount: 0, hasStarVersion: true},
+        {name: "gathered", paramCount: 0, hasStarVersion: false},
+        {name: "lgathered", paramCount: 0, hasStarVersion: false},
+        {name: "matrix", paramCount: 0, hasStarVersion: true},
+        {name: "multiline", paramCount: 0, hasStarVersion: true},
+        {name: "multilined", paramCount: 0, hasStarVersion: false},
+        {name: "numcases", paramCount: 1, hasStarVersion: false},
+        {name: "pmatrix", paramCount: 0, hasStarVersion: true},
+        {name: "prooftree", paramCount: 0, hasStarVersion: false},
+        {name: "psmallmatrix", paramCount: 0, hasStarVersion: true},
+        {name: "rcases", paramCount: 0, hasStarVersion: true},
+        {name: "rgathered", paramCount: 0, hasStarVersion: false},
+        {name: "smallmatrix", paramCount: 0, hasStarVersion: true},
+        {name: "split", paramCount: 0, hasStarVersion: false},
+        {name: "spreadlines", paramCount: 1, hasStarVersion: false},
+        {name: "subarray", paramCount: 1, hasStarVersion: false},
+        {name: "subnumcases", paramCount: 1, hasStarVersion: false},
+        {name: "vmatrix", paramCount: 0, hasStarVersion: true},
+        {name: "Vmatrix", paramCount: 0, hasStarVersion: true},
+        {name: "vsmallmatrix", paramCount: 0, hasStarVersion: true},
+        {name: "Vsmallmatrix", paramCount: 0, hasStarVersion: true},
+        {name: "xalignat", paramCount: 1, hasStarVersion: true},
+        {name: "xxalignat", paramCount: 1, hasStarVersion: false},
+    ]),
+    "\\yeetus{#}\nyoom{#}test\n#",
     "\\above{#}{#}",
     "\\verb|#|",
     "\\left\\",
@@ -352,6 +426,7 @@ const LATEX_COMMANDS = [
     "\\hbar",
     "\\hbox{#}",
     "\\heartsuit",
+    "\\hline",
     "\\hom",
     "\\hookleftarrow",
     "\\hookrightarrow",
@@ -1079,4 +1154,4 @@ const LATEX_COMMANDS = [
     "\\xtwoheadrightarrow{#}",
     "\\yen",
     "\\zeta",
-].sort((a, b) => a.length - b.length);
+].sort((a, b) => getSuggestionDisplayName(a).length - getSuggestionDisplayName(b).length);

@@ -1,4 +1,4 @@
-import {CompletrSettings, WordListInsertionMode} from "../settings";
+import {CompletrSettings, WordInsertionMode} from "../settings";
 import {SuggestionContext, SuggestionProvider} from "./provider";
 
 export abstract class DictionaryProvider implements SuggestionProvider {
@@ -11,7 +11,7 @@ export abstract class DictionaryProvider implements SuggestionProvider {
         if (!this.isEnabled(settings))
             return [];
 
-        const ignoreCase = settings.wordListInsertionMode != WordListInsertionMode.MATCH_CASE_REPLACE;
+        const ignoreCase = settings.wordInsertionMode != WordInsertionMode.MATCH_CASE_REPLACE;
         const query = ignoreCase ? context.query.toLowerCase() : context.query;
         const firstChar = query.charAt(0);
 
@@ -36,7 +36,7 @@ export abstract class DictionaryProvider implements SuggestionProvider {
         result = result.sort((a, b) => a.length - b.length);
 
         //In append mode we combine the query with the suggestions
-        if (settings.wordListInsertionMode === WordListInsertionMode.IGNORE_CASE_APPEND) {
+        if (settings.wordInsertionMode === WordInsertionMode.IGNORE_CASE_APPEND) {
             result = result.map(s => query + s.substring(query.length, s.length));
         }
 

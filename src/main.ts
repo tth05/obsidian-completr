@@ -37,8 +37,6 @@ export default class CompletrPlugin extends Plugin {
 
         this.addSettingTab(new CompletrSettingsTab(this.app, this));
 
-
-        //TODO: Manual triggering of popup, requires some hackery?
         this.addCommand({
             id: 'completr-open-suggestion-popup',
             name: 'Open suggestion popup',

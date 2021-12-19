@@ -2,7 +2,7 @@ import {MarkerRange, TextMarker} from "codemirror";
 import {Editor, EditorPosition} from "obsidian";
 import * as CodeMirror from "codemirror";
 
-const COLORS = ["lightskyblue", "orange", "lime", "pink",  "cornsilk", "magenta", "navajowhite"];
+const COLORS = ["lightskyblue", "orange", "lime", "pink", "cornsilk", "magenta", "navajowhite"];
 
 export type SnippetPlaceholder = {
     marker: TextMarker,
@@ -16,37 +16,53 @@ export default class SnippetManager {
         const color = COLORS.filter(color => !this.currentPlaceholders.find(p => p.marker.css.endsWith(color))).first() ??
             COLORS[Math.floor(Math.random() * COLORS.length)];
 
-        for (let i = value.length - 1; i >= 0; i--) {
-            const c = value.charAt(i);
-            if (c !== "#")
-                continue;
+        const lines = value.split("\n");
 
-            const placeholder = {
-                marker: (
-                    // @ts-ignore
-                    editor.cm as unknown as CodeMirror.Doc
-                ).markText(
-                    {...start, ch: start.ch + i},
-                    {...start, ch: start.ch + i + 1},
-                    {
-                        inclusiveLeft: true,
-                        inclusiveRight: true,
-                        clearWhenEmpty: false,
-                        className: "completr-suggestion-placeholder",
-                        css: "border-color:" + color
-                    }
-                ),
-                editor: editor
-            };
+        for (let lineIndex = lines.length - 1; lineIndex >= 0; lineIndex--) {
+            const line = lines[lineIndex];
 
-            placeholder.marker.on("clear", () => {
-                this.currentPlaceholders.remove(placeholder);
-            });
-            placeholder.marker.on("hide", () => {
-                this.clearAllPlaceholders();
-            });
+            for (let i = line.length - 1; i >= 0; i--) {
+                const c = line.charAt(i);
 
-            this.currentPlaceholders.unshift(placeholder);
+                if (c !== "#" && c !== "~")
+                    continue;
+
+                const lineBaseOffset = lineIndex === 0 ? start.ch : 0;
+                if (c === "~") {
+                    //Hack: Will break things if a # is on the same line
+                    const cursorPos = {line: start.line + lineIndex, ch: lineBaseOffset + i};
+                    editor.setCursor(cursorPos);
+                    editor.replaceRange("", cursorPos, {...cursorPos, ch: cursorPos.ch + 1});
+                    continue;
+                }
+
+                const placeholder = {
+                    marker: (
+                        // @ts-ignore
+                        editor.cm as unknown as CodeMirror.Doc
+                    ).markText(
+                        {line: start.line + lineIndex, ch: lineBaseOffset + i},
+                        {line: start.line + lineIndex, ch: lineBaseOffset + i + 1},
+                        {
+                            inclusiveLeft: true,
+                            inclusiveRight: true,
+                            clearWhenEmpty: false,
+                            className: "completr-suggestion-placeholder",
+                            css: "border-color:" + color
+                        }
+                    ),
+                    editor: editor
+                };
+
+                placeholder.marker.on("clear", () => {
+                    this.currentPlaceholders.remove(placeholder);
+                });
+                placeholder.marker.on("hide", () => {
+                    this.clearAllPlaceholders();
+                });
+
+                this.currentPlaceholders.unshift(placeholder);
+            }
         }
 
         this.selectMarker(this.currentPlaceholders[0]);
@@ -90,6 +106,9 @@ export default class SnippetManager {
     }
 
     selectMarker(placeholder: SnippetPlaceholder) {
+        if (!placeholder)
+            return;
+
         const range = placeholder.marker.find() as MarkerRange;
 
         const from = {...range.from, ch: range.from.ch};

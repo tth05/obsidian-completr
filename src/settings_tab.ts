@@ -2,7 +2,7 @@ import {App, ButtonComponent, Modal, PluginSettingTab, Setting} from "obsidian";
 import CompletrPlugin from "./main";
 import {FileScanner} from "./provider/scanner_provider";
 import {WordList} from "./provider/word_list_provider";
-import {CompletrSettings, WordListInsertionMode} from "./settings";
+import {CompletrSettings, WordInsertionMode} from "./settings";
 
 export default class CompletrSettingsTab extends PluginSettingTab {
 
@@ -52,6 +52,21 @@ export default class CompletrSettingsTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                     });
             });
+
+        new Setting(containerEl)
+            .setName("Word insertion mode")
+            .setDesc("The insertion mode that is used. Ignore-case would suggest 'Hello' if the typed text is 'hello', match-case would not. " +
+                "Append would complete 'Hell' with 'Hello' while replace would complete it with 'hello' instead (if only 'hello' was a known word).")
+            .addDropdown(dropdown => dropdown
+                .addOption(WordInsertionMode.IGNORE_CASE_REPLACE, WordInsertionMode.IGNORE_CASE_REPLACE)
+                .addOption(WordInsertionMode.IGNORE_CASE_APPEND, WordInsertionMode.IGNORE_CASE_APPEND)
+                .addOption(WordInsertionMode.MATCH_CASE_REPLACE, WordInsertionMode.MATCH_CASE_REPLACE)
+                .setValue(this.plugin.settings.wordInsertionMode)
+                .onChange(async val => {
+                    this.plugin.settings.wordInsertionMode = val as WordInsertionMode;
+                    await this.plugin.saveSettings();
+                })
+            );
 
         new Setting(containerEl)
             .setName("Latex provider")
@@ -110,21 +125,6 @@ export default class CompletrSettingsTab extends PluginSettingTab {
             .setHeading();
 
         this.createEnabledSetting("wordListProviderEnabled", "Whether or not the word list provider is enabled", containerEl);
-
-        new Setting(containerEl)
-            .setName("Suggestion mode")
-            .setDesc("The insertion mode that is used. Ignore-case would suggest 'Hello' if the typed text is 'hello', match-case would not. " +
-                "Append would complete 'Hell' with 'Hello' while replace would complete it with 'hello' instead (if only 'hello' was a known word).")
-            .addDropdown(dropdown => dropdown
-                .addOption(WordListInsertionMode.IGNORE_CASE_REPLACE, WordListInsertionMode.IGNORE_CASE_REPLACE)
-                .addOption(WordListInsertionMode.IGNORE_CASE_APPEND, WordListInsertionMode.IGNORE_CASE_APPEND)
-                .addOption(WordListInsertionMode.MATCH_CASE_REPLACE, WordListInsertionMode.MATCH_CASE_REPLACE)
-                .setValue(this.plugin.settings.wordListInsertionMode)
-                .onChange(async val => {
-                    this.plugin.settings.wordListInsertionMode = val as WordListInsertionMode;
-                    await this.plugin.saveSettings();
-                })
-            );
 
         const fileInput = createEl("input", {
             attr: {
