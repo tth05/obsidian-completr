@@ -30,7 +30,6 @@ function substringUntil(str: string, delimiter: string): string {
     return str.substring(0, index);
 }
 
-//TODO: Environment completion, \begin{...}{} \end{...}
 class LatexSuggestionProvider implements SuggestionProvider {
     getSuggestions(context: SuggestionContext, settings: CompletrSettings): Suggestion[] {
         if (!settings.latexProviderEnabled)
