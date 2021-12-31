@@ -1,6 +1,8 @@
 import {CompletrSettings} from "../settings";
-import {readFile} from "fs/promises";
 import {DictionaryProvider} from "./dictionary_provider";
+import {Notice, Vault} from "obsidian";
+
+const BASE_FOLDER_PATH = ".obsidian/plugins/obsidian-completr/wordLists";
 
 class WordListSuggestionProvider extends DictionaryProvider {
 
@@ -10,16 +12,19 @@ class WordListSuggestionProvider extends DictionaryProvider {
         return settings.wordListProviderEnabled;
     }
 
-    async loadFromFiles(settings: CompletrSettings) {
+    async loadFromFiles(vault: Vault, settings: CompletrSettings) {
         this.wordMap.clear();
 
+        const fileNames = await this.getRelativeFilePaths(vault);
         //Read all files
-        for (let i = settings.wordListFiles.length - 1; i >= 0; i--) {
+        for (let i = fileNames.length - 1; i >= 0; i--) {
+            const fileName = fileNames[i];
+
             let data: string;
             try {
-                data = (await readFile(settings.wordListFiles[i]))?.toString();
+                data = await vault.adapter.read(fileName);
             } catch (e) {
-                settings.wordListFiles.splice(i, 1);
+                console.log("Completr: Unable to read " + fileName);
                 continue;
             }
 
@@ -47,7 +52,36 @@ class WordListSuggestionProvider extends DictionaryProvider {
         }
 
         if (count > 0)
-            console.log("Completr: Loaded " + count + " words");
+            new Notice("Loaded " + count + " words from " + BASE_FOLDER_PATH);
+    }
+
+    async deleteWordList(vault: Vault, path: string) {
+        await vault.adapter.remove(path);
+    }
+
+    async importWordList(vault: Vault, name: string, text: string): Promise<boolean> {
+        const path = BASE_FOLDER_PATH + "/" + name;
+        if (await vault.adapter.exists(path))
+            return false;
+
+        await vault.adapter.write(path, text);
+        return true;
+    }
+
+    /**
+     * Returns all files inside of {@link BASE_FOLDER_PATH}. The resulting strings are full paths, relative to the vault
+     * root. <br>
+     * @example
+     * - .obsidian/plugins/obsidian-completr/wordLists/german.dic
+     * - .obsidian/plugins/obsidian-completr/wordLists/long_words
+     * - .obsidian/plugins/obsidian-completr/wordLists/special_words.txt
+     * @param vault
+     */
+    async getRelativeFilePaths(vault: Vault): Promise<string[]> {
+        if (!(await vault.adapter.exists(BASE_FOLDER_PATH)))
+            await vault.adapter.mkdir(BASE_FOLDER_PATH);
+
+        return (await vault.adapter.list(BASE_FOLDER_PATH)).files;
     }
 }
 

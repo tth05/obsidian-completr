@@ -1,4 +1,4 @@
-import {App, ButtonComponent, Modal, PluginSettingTab, Setting} from "obsidian";
+import {App, ButtonComponent, Modal, Notice, PluginSettingTab, Setting} from "obsidian";
 import CompletrPlugin from "./main";
 import {FileScanner} from "./provider/scanner_provider";
 import {WordList} from "./provider/word_list_provider";
@@ -137,19 +137,22 @@ export default class CompletrSettingsTab extends PluginSettingTab {
             if (files.length < 1)
                 return;
 
-            const oldLength = this.plugin.settings.wordListFiles.length;
+            let changed = false;
             for (let i = 0; i < files.length; i++) {
-                const path = (files[i] as any).path;
-                if (!this.plugin.settings.wordListFiles.contains(path))
-                    this.plugin.settings.wordListFiles.push(path);
+                const file = files[i];
+                const text = await file.text();
+                const success = await WordList.importWordList(this.app.vault, file.name, text);
+                changed ||= success;
+
+                if (!success)
+                    new Notice("Unable to import " + file.name + " because it already exists!");
             }
 
             //Only refresh if something was added
-            if (oldLength === this.plugin.settings.wordListFiles.length)
+            if (!changed)
                 return;
 
             await this.reloadWords();
-            await this.plugin.saveSettings();
             this.display();
         }
 
@@ -173,20 +176,30 @@ export default class CompletrSettingsTab extends PluginSettingTab {
             });
 
         const wordListDiv = containerEl.createDiv();
-        for (let path of this.plugin.settings.wordListFiles) {
-            new Setting(wordListDiv)
-                .setName(path)
-                .addExtraButton((button) => button
-                    .setIcon("trash")
-                    .setTooltip("Remove")
-                    .onClick(async () => {
-                        this.plugin.settings.wordListFiles.remove(path);
-                        await this.reloadWords();
-                        await this.plugin.saveSettings();
-                        this.display();
-                    })
-                ).settingEl.addClass("completr-settings-list-item");
-        }
+        WordList.getRelativeFilePaths(this.app.vault).then((names) => {
+            for (const name of names) {
+                new Setting(wordListDiv)
+                    .setName(name)
+                    .addExtraButton((button) => button
+                        .setIcon("trash")
+                        .setTooltip("Remove")
+                        .onClick(async () => {
+                            new ConfirmationModal(
+                                this.app,
+                                "Delete " + name + "?",
+                                "The file will be removed and the words inside of it won't show up as suggestions anymore.",
+                                button => button
+                                    .setButtonText("Delete")
+                                    .setWarning(),
+                                async () => {
+                                    await WordList.deleteWordList(this.app.vault, name);
+                                    await this.reloadWords();
+                                    this.display();
+                                }).open();
+                        })
+                    ).settingEl.addClass("completr-settings-list-item");
+            }
+        });
     }
 
     private async reloadWords() {
@@ -194,7 +207,7 @@ export default class CompletrSettingsTab extends PluginSettingTab {
             return;
 
         this.isReloadingWords = true;
-        await WordList.loadFromFiles(this.plugin.settings);
+        await WordList.loadFromFiles(this.app.vault, this.plugin.settings);
         this.isReloadingWords = false;
     }
 

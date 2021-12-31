@@ -13,7 +13,6 @@ export interface CompletrSettings {
     fileScannerProviderEnabled: boolean,
     fileScannerScanCurrent: boolean,
     wordListProviderEnabled: boolean,
-    wordListFiles: string[],
 }
 
 export const DEFAULT_SETTINGS: CompletrSettings = {
@@ -25,5 +24,4 @@ export const DEFAULT_SETTINGS: CompletrSettings = {
     fileScannerProviderEnabled: true,
     fileScannerScanCurrent: true,
     wordListProviderEnabled: true,
-    wordListFiles: [],
 }
