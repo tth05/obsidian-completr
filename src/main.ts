@@ -69,8 +69,8 @@ export default class CompletrPlugin extends Plugin {
 
     async loadSettings() {
         this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-        await WordList.loadFromFiles(this.app.vault, this.settings);
-        await FileScanner.loadData(this.app.vault);
+        WordList.loadFromFiles(this.app.vault, this.settings);
+        FileScanner.loadData(this.app.vault);
     }
 
     async saveSettings() {
