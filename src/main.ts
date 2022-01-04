@@ -33,7 +33,7 @@ export default class CompletrPlugin extends Plugin {
             cm.on('cursorActivity', this.handleCursorActivity);
         });
 
-        this.app.workspace.on('file-open', this.onFileOpened, this);
+        this.registerEvent(this.app.workspace.on('file-open', this.onFileOpened, this));
 
         this.addSettingTab(new CompletrSettingsTab(this.app, this));
 
@@ -62,8 +62,6 @@ export default class CompletrPlugin extends Plugin {
             cm.off('beforeChange', this.handleBeforeChange);
             cm.off('cursorActivity', this.handleCursorActivity);
         })
-
-        this.app.workspace.off('file-open', this.onFileOpened);
 
         this.snippetManager.onunload();
         await FileScanner.saveData(this.app.vault);
