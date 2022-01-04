@@ -28,9 +28,11 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
 
     private readonly snippetManager: SnippetManager;
     private readonly settings: CompletrSettings;
+    private readonly disableSnippets: boolean;
 
     constructor(app: App, settings: CompletrSettings, snippetManager: SnippetManager) {
         super(app);
+        this.disableSnippets = (app.vault as any).config?.legacyEditor;
         this.settings = settings;
         this.snippetManager = snippetManager;
     }
@@ -98,7 +100,11 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
 
         //Check if suggestion is a snippet
         if (replacement.contains("#") || replacement.contains("~")) {
-            this.snippetManager.handleSnippet(replacement, this.context.start, this.context.editor);
+            if (!this.disableSnippets) {
+                this.snippetManager.handleSnippet(replacement, this.context.start, this.context.editor);
+            } else {
+                console.log("Completr: Please enable Live Preview mode to use snippets");
+            }
         }
 
         this.close();

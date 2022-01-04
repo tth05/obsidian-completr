@@ -17,7 +17,7 @@ esbuild.build({
 	},
 	entryPoints: ['src/main.ts'],
 	bundle: true,
-	external: ['obsidian', 'electron', ...builtins],
+	external: ['@codemirror/state', '@codemirror/language', '@codemirror/view', '@codemirror/text', '@codemirror/rangeset', 'obsidian', 'electron', ...builtins],
 	format: 'cjs',
 	watch: !prod,
 	target: 'es2016',

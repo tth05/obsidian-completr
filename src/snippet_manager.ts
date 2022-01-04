@@ -1,20 +1,91 @@
-import {MarkerRange, TextMarker} from "codemirror";
 import {Editor, EditorPosition} from "obsidian";
-import * as CodeMirror from "codemirror";
+import {Range} from "@codemirror/rangeset";
+import {Decoration} from "@codemirror/view";
+import {editorToCodeMirrorState, editorToCodeMirrorView, indexFromPos, posFromIndex} from "./codemirror_util";
+import {addMark, clearMarks, markerStateField, removeMarkBySpecAttribute} from "./marker_state_field";
 
 const COLORS = ["lightskyblue", "orange", "lime", "pink", "cornsilk", "magenta", "navajowhite"];
 
-export type SnippetPlaceholder = {
-    marker: TextMarker,
+function addColorStyleTagToEditor(contentDOM: HTMLElement) {
+    //We use the parent because the contentDOM messes with its children
+    contentDOM = contentDOM.parentElement;
+    for (let i = contentDOM.children.length - 1; i >= 0; i--) {
+        //Don't add the style element twice
+        if (contentDOM.children[i].tagName === "STYLE")
+            return;
+    }
+
+    const style = contentDOM.createEl("style");
+    let text = "";
+    for (let i = 0; i < COLORS.length; i++) {
+        const color = COLORS[i];
+        text += `.completr-suggestion-placeholder${i} {
+            border-color: ${color};
+        }
+        span.completr-suggestion-placeholder${i} span {
+            border-color: ${color};
+        }
+        `;
+    }
+
+    style.setText(text);
+    contentDOM.appendChild(style);
+}
+
+export class PlaceholderReference {
     editor: Editor
+
+    constructor(editor: Editor) {
+        this.editor = editor;
+    }
+
+    get marker(): Range<Decoration> {
+        const state = editorToCodeMirrorState(this.editor);
+        const iter = state.field(markerStateField).iter();
+        while (iter.value) {
+            if (iter.value.spec.reference === this) {
+                return {
+                    from: iter.from,
+                    to: iter.to,
+                    value: iter.value
+                };
+            }
+
+            iter.next();
+        }
+
+        return null;
+    }
+
+    removeFromEditor(): void {
+        editorToCodeMirrorView(this.editor).dispatch({
+            effects: removeMarkBySpecAttribute.of({attribute: "reference", reference: this}),
+        });
+    }
+}
+
+interface MarkerRange {
+    from: EditorPosition,
+    to: EditorPosition
 }
 
 export default class SnippetManager {
-    private currentPlaceholders: SnippetPlaceholder[] = [];
+    private currentPlaceholderReferences: PlaceholderReference[] = [];
 
     handleSnippet(value: string, start: EditorPosition, editor: Editor) {
-        const color = COLORS.filter(color => !this.currentPlaceholders.find(p => p.marker.css.endsWith(color))).first() ??
-            COLORS[Math.floor(Math.random() * COLORS.length)];
+        let colorIndex = 0;
+        for (; colorIndex < COLORS.length; colorIndex++) {
+            if (!this.currentPlaceholderReferences.find(p => p.marker.value.spec.attributes.class.endsWith(colorIndex + "")))
+                break;
+        }
+
+        if (colorIndex === COLORS.length) {
+            console.log("Completr: No colors left for snippet, using random color");
+            colorIndex = Math.floor(Math.random() * COLORS.length);
+        }
+
+        const editorView = editorToCodeMirrorView(editor);
+        addColorStyleTagToEditor(editorView.contentDOM);
 
         const lines = value.split("\n");
 
@@ -36,50 +107,39 @@ export default class SnippetManager {
                     continue;
                 }
 
-                const placeholder = {
-                    marker: (
-                        // @ts-ignore
-                        editor.cm as unknown as CodeMirror.Doc
-                    ).markText(
-                        {line: start.line + lineIndex, ch: lineBaseOffset + i},
-                        {line: start.line + lineIndex, ch: lineBaseOffset + i + 1},
-                        {
-                            inclusiveLeft: true,
-                            inclusiveRight: true,
-                            clearWhenEmpty: false,
-                            className: "completr-suggestion-placeholder",
-                            css: "border-color:" + color
-                        }
-                    ),
-                    editor: editor
-                };
+                const reference = new PlaceholderReference(editor);
+                let mark = Decoration.mark({
+                    inclusive: true,
+                    attributes: {
+                        style: "border-width: 1px 0 1px 0;border-style: solid;",
+                        class: "completr-suggestion-placeholder" + colorIndex
+                    },
+                    reference: reference
+                }).range(
+                    indexFromPos(editorView.state.doc, {line: start.line + lineIndex, ch: lineBaseOffset + i}),
+                    indexFromPos(editorView.state.doc, {line: start.line + lineIndex, ch: lineBaseOffset + i + 1})
+                );
 
-                placeholder.marker.on("clear", () => {
-                    this.currentPlaceholders.remove(placeholder);
-                });
-                placeholder.marker.on("hide", () => {
-                    this.clearAllPlaceholders();
-                });
+                editorView.dispatch({effects: addMark.of(mark)});
 
-                this.currentPlaceholders.unshift(placeholder);
+                this.currentPlaceholderReferences.unshift(reference);
             }
         }
 
-        this.selectMarker(this.currentPlaceholders[0]);
+        this.selectMarker(this.currentPlaceholderReferences[0]);
     }
 
     consumeAndGotoNextMarker(editor: Editor): boolean {
-        this.clearInvalidPlaceholders();
         //Remove the placeholder that we're inside of
-        const oldPlaceholder = this.currentPlaceholders.shift();
+        const oldPlaceholder = this.currentPlaceholderReferences.shift();
         const oldRange = SnippetManager.rangeFromPlaceholder(oldPlaceholder);
-        oldPlaceholder.marker.clear();
+        oldPlaceholder.removeFromEditor();
 
         //If there's none left, return
-        if (this.currentPlaceholders.length === 0)
+        if (this.currentPlaceholderReferences.length === 0)
             return false;
 
-        const placeholder = this.currentPlaceholders[0];
+        const placeholder = this.currentPlaceholderReferences[0];
 
         const newRange = SnippetManager.rangeFromPlaceholder(placeholder);
         if (newRange.from.ch <= oldRange.from.ch && newRange.to.ch >= oldRange.to.ch) {
@@ -92,10 +152,8 @@ export default class SnippetManager {
         return true;
     }
 
-    placeholderAtPos(editor: Editor, pos: EditorPosition): SnippetPlaceholder {
-        this.clearInvalidPlaceholders();
-
-        for (const placeholder of this.currentPlaceholders) {
+    placeholderAtPos(pos: EditorPosition): PlaceholderReference {
+        for (const placeholder of this.currentPlaceholderReferences) {
             const range = SnippetManager.rangeFromPlaceholder(placeholder);
             //Return the first one that matches, because it should be the one where we're at
             if (range.from.ch <= pos.ch && range.to.ch >= pos.ch)
@@ -105,38 +163,35 @@ export default class SnippetManager {
         return null;
     }
 
-    selectMarker(placeholder: SnippetPlaceholder) {
-        if (!placeholder)
+    selectMarker(reference: PlaceholderReference) {
+        if (!reference)
             return;
 
-        const range = placeholder.marker.find() as MarkerRange;
-
-        const from = {...range.from, ch: range.from.ch};
-        placeholder.editor.setSelection(from, {...from, ch: from.ch + 1});
-
-        this.clearInvalidPlaceholders();
+        const from = posFromIndex(editorToCodeMirrorState(reference.editor).doc, reference.marker.from);
+        reference.editor.setSelection(from, {...from, ch: from.ch + 1});
     }
 
     clearAllPlaceholders() {
-        for (let i = this.currentPlaceholders.length - 1; i >= 0; i--) {
-            this.currentPlaceholders[i].marker.clear();
-        }
+        if (this.currentPlaceholderReferences.length === 0)
+            return;
+        const firstRef = this.currentPlaceholderReferences[0];
+        const view = editorToCodeMirrorView(firstRef.editor);
+        view.dispatch({
+            effects: clearMarks.of(null)
+        });
+
+        this.currentPlaceholderReferences = [];
     }
 
-    private static rangeFromPlaceholder(placeholder: SnippetPlaceholder): MarkerRange {
-        return (placeholder.marker.find() as MarkerRange);
-    }
-
-    private clearInvalidPlaceholders() {
-        for (let i = this.currentPlaceholders.length - 1; i >= 0; i--) {
-            if (!this.currentPlaceholders[i].marker.find()) {
-                this.currentPlaceholders.splice(i, 1);
-            }
-        }
+    private static rangeFromPlaceholder(reference: PlaceholderReference): MarkerRange {
+        const marker = reference.marker;
+        return {
+            from: posFromIndex(editorToCodeMirrorState(reference.editor).doc, marker.from),
+            to: posFromIndex(editorToCodeMirrorState(reference.editor).doc, marker.to)
+        };
     }
 
     onunload() {
         this.clearAllPlaceholders();
     }
 }
-
