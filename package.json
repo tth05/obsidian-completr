@@ -17,7 +17,7 @@
 		"builtin-modules": "^3.2.0",
         "@codemirror/autocomplete": "^0.19.9",
         "@codemirror/view": "^0.19.37",
-        "@codemirror/rangeset": "^0.19.5",
+        "@codemirror/rangeset": "^0.19.6",
 		"esbuild": "0.13.12",
 		"obsidian": "^0.13.11",
 		"tslib": "2.3.1",

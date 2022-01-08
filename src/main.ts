@@ -109,7 +109,7 @@ export default class CompletrPlugin extends Plugin {
     };
 
     private readonly handleKeydown = (event: KeyboardEvent, cm: EditorView) => {
-        if (!["Enter", "Tab"].contains(event.key))
+        if (!["Enter", "Tab"].contains(event.key) || event.code === "completr")
             return;
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (!view)
@@ -118,16 +118,21 @@ export default class CompletrPlugin extends Plugin {
         const editor = view.editor;
         const placeholder = this.snippetManager.placeholderAtPos(editor.getCursor());
 
-        //Pass through enter and tab when holding shift. Allows going to the next line while the popup is open
-        if (event.shiftKey) {
+        const isTabKey = event.key === "Tab";
+
+        //Pass through enter holding shift and tab always. Allows going to the next line while the popup is open
+        if (event.shiftKey || isTabKey) {
             this.suggestionPopup.close();
             if (!placeholder) {
                 //Hack: Dispatch the event again to properly continue lists and other obsidian formatting features.
                 let keyboardEvent = new KeyboardEvent(event.type, {
                     key: event.key,
                     altKey: event.altKey,
+                    shiftKey: !isTabKey ? false : event.shiftKey,
                     keyCode: event.keyCode,
-                    charCode: event.charCode
+                    charCode: event.charCode,
+                    //Prevents stackoverflow of keydown events
+                    code: "completr"
                 });
                 cm.contentDOM.dispatchEvent(keyboardEvent);
                 event.preventDefault();
