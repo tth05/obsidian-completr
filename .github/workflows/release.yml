@@ -33,7 +33,7 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - Initial release
+            - Fix Shift+Tab not working
           draft: false
           prerelease: false
       - name: Upload main.js
