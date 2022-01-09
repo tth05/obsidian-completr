@@ -10,6 +10,9 @@ class FrontMatterSuggestionProvider implements SuggestionProvider {
     private globalTags: Map<string, Set<string>> = new Map<string, Set<string>>();
 
     getSuggestions(context: SuggestionContext, settings: CompletrSettings): Suggestion[] {
+        if (!settings.frontMatterProviderEnabled)
+            return [];
+
         const firstLine = context.editor.getLine(0);
         const isInFrontMatter = FrontMatterSuggestionProvider.isInFrontMatter(context.editor, context.start);
 
@@ -57,9 +60,9 @@ class FrontMatterSuggestionProvider implements SuggestionProvider {
                 settings.maxLookBackDistance
             );
 
-            return [...this.globalTags.values()].flatMap(set => [...set.values()]).filter(tag => tag.startsWith(query)).map(tag => ({
+            return this.getUniqueGlobalTags().filter(tag => tag.startsWith(query)).map(tag => ({
                 displayName: tag,
-                replacement: tag,
+                replacement: tag + (settings.frontMatterTagAppendCommaSuffix ? ", " : ""),
                 overrideStart: {...context.end, ch: context.end.ch - query.length}
             })).sort((a, b) => a.displayName.length - b.displayName.length);
         }
@@ -88,6 +91,16 @@ class FrontMatterSuggestionProvider implements SuggestionProvider {
         for (let tag of cache.frontmatter.tags) {
             tags.add(tag);
         }
+    }
+
+    private getUniqueGlobalTags(): string[] {
+        const allTags = new Set<string>();
+        for (let set of this.globalTags.values()) {
+            for (let tag of set) {
+                allTags.add(tag);
+            }
+        }
+        return [...allTags];
     }
 
     private static isInFrontMatter(editor: Editor, pos: EditorPosition): boolean {

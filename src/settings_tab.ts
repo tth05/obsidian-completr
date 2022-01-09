@@ -75,6 +75,26 @@ export default class CompletrSettingsTab extends PluginSettingTab {
         this.createEnabledSetting("latexProviderEnabled", "Whether or not the latex provider is enabled", containerEl);
 
         new Setting(containerEl)
+            .setName("Front matter provider")
+            .addExtraButton(button => button
+                .setIcon("link")
+                .setTooltip("Obsidian Front-Matter wiki")
+                .onClick(() => window.open("https://help.obsidian.md/Advanced+topics/YAML+front+matter")))
+            .setHeading();
+
+        this.createEnabledSetting("frontMatterProviderEnabled", "Whether the front matter provider is enabled", containerEl);
+
+        new Setting(containerEl)
+            .setName("Add comma suffix to tag completion")
+            .setDesc("Whether each completed tag should be suffixed with a comma. Allows faster insertion of multiple tags.")
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.frontMatterTagAppendCommaSuffix)
+                .onChange(async val => {
+                    this.plugin.settings.frontMatterTagAppendCommaSuffix = val;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
             .setName("File scanner provider")
             .setHeading()
             .addExtraButton(button => button
