@@ -33,7 +33,7 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - Fix Shift+Tab not working
+            - Add support for the obsidian front matter
           draft: false
           prerelease: false
       - name: Upload main.js
