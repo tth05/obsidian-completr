@@ -10,6 +10,8 @@ This plugin provides advanced auto-completion functionality for obsidian.
     - Includes all MathJax commands
     - Allows `\begin...` completion for all environments
     - Support for inserting snippets with placeholders
+- YAML Front Matter support
+    - Provides completions for all tags in vault
 - Word list support
     - Load files where each line is a word
     - Performant, even with very big lists
@@ -27,6 +29,8 @@ Browse the community plugins list and search for `Completr`.
 ## Example usage
 #### Latex snippets
 ![Latex](https://user-images.githubusercontent.com/36999320/146680089-57390cd7-e3c3-418c-9c55-9536259bb956.gif)
+#### YAML Front Matter
+![Front matter](https://user-images.githubusercontent.com/36999320/148700639-6cb48631-0b2f-45b8-b48a-40357425e8bf.gif)
 #### File scanning
 ![File scanner](https://user-images.githubusercontent.com/36999320/146680134-33d8393b-956a-4028-ab2f-62526f76984d.gif)
 #### Two million german words loaded
