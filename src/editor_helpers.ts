@@ -21,3 +21,27 @@ export function editorToCodeMirrorState(editor: Editor): EditorState {
 export function editorToCodeMirrorView(editor: Editor): EditorView {
     return (editor as any).cm;
 }
+
+export function matchWordBackwards(
+    editor: Editor,
+    cursor: EditorPosition,
+    charValidator: (char: string) => boolean,
+    maxLookBackDistance: number = 50
+): { query: string, separatorChar: string } {
+    let query = "", separatorChar = null;
+
+    //Save some time for very long lines
+    let lookBackEnd = Math.max(0, cursor.ch - maxLookBackDistance);
+    //Find word in front of cursor
+    for (let i = cursor.ch - 1; i >= lookBackEnd; i--) {
+        const prevChar = editor.getRange({...cursor, ch: i}, {...cursor, ch: i + 1});
+        if (!charValidator(prevChar)) {
+            separatorChar = prevChar;
+            break;
+        }
+
+        query = prevChar + query;
+    }
+
+    return {query, separatorChar};
+}

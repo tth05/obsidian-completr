@@ -8,7 +8,7 @@ export abstract class DictionaryProvider implements SuggestionProvider {
     abstract isEnabled(settings: CompletrSettings): boolean;
 
     getSuggestions(context: SuggestionContext, settings: CompletrSettings): string[] {
-        if (!this.isEnabled(settings))
+        if (!this.isEnabled(settings) || !context.query)
             return [];
 
         const ignoreCase = settings.wordInsertionMode != WordInsertionMode.MATCH_CASE_REPLACE;

@@ -1,7 +1,7 @@
 import {Editor, EditorPosition} from "obsidian";
 import {Range} from "@codemirror/rangeset";
 import {Decoration} from "@codemirror/view";
-import {editorToCodeMirrorState, editorToCodeMirrorView, indexFromPos, posFromIndex} from "./codemirror_util";
+import {editorToCodeMirrorState, editorToCodeMirrorView, indexFromPos, posFromIndex} from "./editor_helpers";
 import {addMark, clearMarks, markerStateField, removeMarkBySpecAttribute} from "./marker_state_field";
 
 const COLORS = ["lightskyblue", "orange", "lime", "pink", "cornsilk", "magenta", "navajowhite"];

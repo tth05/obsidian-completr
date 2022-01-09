@@ -13,8 +13,10 @@ import {
 } from "obsidian";
 import SnippetManager from "./snippet_manager";
 import {CompletrSettings} from "./settings";
+import {FrontMatter} from "./provider/front_matter_provider";
+import {matchWordBackwards} from "./editor_helpers";
 
-const PROVIDERS: SuggestionProvider[] = [Latex, FileScanner, WordList];
+const PROVIDERS: SuggestionProvider[] = [FrontMatter, Latex, FileScanner, WordList];
 
 export default class SuggestionPopup extends EditorSuggest<Suggestion> {
     /**
@@ -40,9 +42,6 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
     getSuggestions(
         context: EditorSuggestContext
     ): Suggestion[] | Promise<Suggestion[]> {
-        if (!context.query)
-            return [];
-
         let suggestions: Suggestion[] = [];
 
         for (let provider of PROVIDERS) {
@@ -50,6 +49,17 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
                 ...context,
                 separatorChar: this.separatorChar
             }, this.settings)];
+
+            if (provider.blocksAllOtherProviders && suggestions.length > 0) {
+                suggestions.forEach((suggestion) => {
+                    if (typeof suggestion === "string" || !suggestion.overrideStart)
+                        return;
+
+                    //Fixes popup position
+                    this.context.start = suggestion.overrideStart;
+                });
+                break;
+            }
         }
 
         return suggestions;
@@ -60,24 +70,14 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
             this.justClosed = false;
             return null;
         }
-        if (cursor.ch == 0)
+        if (cursor.ch === 0)
             return null;
 
-        this.separatorChar = null;
-
-        let query = "";
-        //Save some time for very long lines
-        let lookBackEnd = Math.max(0, cursor.ch - this.settings.maxLookBackDistance);
-        //Find word in front of cursor
-        for (let i = cursor.ch - 1; i >= lookBackEnd; i--) {
-            const prevChar = editor.getRange({...cursor, ch: i}, {...cursor, ch: i + 1});
-            if (!this.getCharacterRegex().test(prevChar)) {
-                this.separatorChar = prevChar;
-                break;
-            }
-
-            query = prevChar + query;
-        }
+        let {
+            query,
+            separatorChar
+        } = matchWordBackwards(editor, cursor, (char) => this.getCharacterRegex().test(char), this.settings.maxLookBackDistance);
+        this.separatorChar = separatorChar;
 
         return {
             start: {
@@ -96,15 +96,18 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
 
     selectSuggestion(value: Suggestion, evt: MouseEvent | KeyboardEvent): void {
         const replacement = getSuggestionReplacement(value);
-        this.context.editor.replaceRange(replacement, this.context.start, this.context.end);
+        const start = typeof value !== "string" && value.overrideStart ? value.overrideStart : this.context.start;
+        this.context.editor.replaceRange(replacement, start, this.context.end);
 
         //Check if suggestion is a snippet
         if (replacement.contains("#") || replacement.contains("~")) {
             if (!this.disableSnippets) {
-                this.snippetManager.handleSnippet(replacement, this.context.start, this.context.editor);
+                this.snippetManager.handleSnippet(replacement, start, this.context.editor);
             } else {
                 console.log("Completr: Please enable Live Preview mode to use snippets");
             }
+        } else {
+            this.context.editor.setCursor({...start, ch: start.ch + replacement.length});
         }
 
         this.close();

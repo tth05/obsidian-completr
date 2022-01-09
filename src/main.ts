@@ -11,8 +11,9 @@ import {FileScanner} from "./provider/scanner_provider";
 import CompletrSettingsTab from "./settings_tab";
 import {EditorView} from "@codemirror/view";
 import {Prec} from "@codemirror/state";
-import {editorToCodeMirrorState, posFromIndex} from "./codemirror_util";
+import {editorToCodeMirrorState, posFromIndex} from "./editor_helpers";
 import {markerStateField} from "./marker_state_field";
+import {FrontMatter} from "./provider/front_matter_provider";
 
 export default class CompletrPlugin extends Plugin {
 
@@ -32,6 +33,8 @@ export default class CompletrPlugin extends Plugin {
         this.registerEditorSuggest(this.suggestionPopup);
 
         this.registerEvent(this.app.workspace.on('file-open', this.onFileOpened, this));
+        this.registerEvent(this.app.metadataCache.on('changed', FrontMatter.onCacheChange, FrontMatter));
+        this.app.workspace.onLayoutReady(() => FrontMatter.loadGlobalTags(this.app.metadataCache, this.app.vault.getMarkdownFiles()));
 
         this.registerEditorExtension(markerStateField);
 

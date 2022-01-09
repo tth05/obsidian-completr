@@ -32,7 +32,7 @@ function substringUntil(str: string, delimiter: string): string {
 
 class LatexSuggestionProvider implements SuggestionProvider {
     getSuggestions(context: SuggestionContext, settings: CompletrSettings): Suggestion[] {
-        if (!settings.latexProviderEnabled)
+        if (!settings.latexProviderEnabled || !context.query)
             return [];
 
         let editor = context.editor;
