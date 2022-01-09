@@ -238,7 +238,11 @@ export default class CompletrSettingsTab extends PluginSettingTab {
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings[propertyName] as boolean)
                 //@ts-ignore
-                .onChange((val) => this.plugin.settings[propertyName] = val));
+                .onChange(async (val) => {
+                    // @ts-ignore
+                    this.plugin.settings[propertyName] = val;
+                    await this.plugin.saveSettings();
+                }));
     }
 }
 
