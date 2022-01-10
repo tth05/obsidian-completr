@@ -153,8 +153,15 @@ export default class SnippetManager {
     }
 
     placeholderAtPos(pos: EditorPosition): PlaceholderReference {
-        for (const placeholder of this.currentPlaceholderReferences) {
+        for (let i = this.currentPlaceholderReferences.length - 1; i >= 0; i--) {
+            const placeholder = this.currentPlaceholderReferences[i];
             const range = SnippetManager.rangeFromPlaceholder(placeholder);
+            //Removes invalid placeholders
+            if (!range) {
+                this.currentPlaceholderReferences.slice(i, 1);
+                continue;
+            }
+
             //Return the first one that matches, because it should be the one where we're at
             if (range.from.ch <= pos.ch && range.to.ch >= pos.ch)
                 return placeholder;
@@ -185,6 +192,9 @@ export default class SnippetManager {
 
     private static rangeFromPlaceholder(reference: PlaceholderReference): MarkerRange {
         const marker = reference.marker;
+        if (!marker)
+            return null;
+
         return {
             from: posFromIndex(editorToCodeMirrorState(reference.editor).doc, marker.from),
             to: posFromIndex(editorToCodeMirrorState(reference.editor).doc, marker.to)
