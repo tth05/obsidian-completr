@@ -6,32 +6,6 @@ import {addMark, clearMarks, markerStateField, removeMarkBySpecAttribute} from "
 
 const COLORS = ["lightskyblue", "orange", "lime", "pink", "cornsilk", "magenta", "navajowhite"];
 
-function addColorStyleTagToEditor(contentDOM: HTMLElement) {
-    //We use the parent because the contentDOM messes with its children
-    contentDOM = contentDOM.parentElement;
-    for (let i = contentDOM.children.length - 1; i >= 0; i--) {
-        //Don't add the style element twice
-        if (contentDOM.children[i].tagName === "STYLE")
-            return;
-    }
-
-    const style = contentDOM.createEl("style");
-    let text = "";
-    for (let i = 0; i < COLORS.length; i++) {
-        const color = COLORS[i];
-        text += `.completr-suggestion-placeholder${i} {
-            border-color: ${color};
-        }
-        span.completr-suggestion-placeholder${i} span {
-            border-color: ${color};
-        }
-        `;
-    }
-
-    style.setText(text);
-    contentDOM.appendChild(style);
-}
-
 export class PlaceholderReference {
     editor: Editor
 
@@ -85,8 +59,6 @@ export default class SnippetManager {
         }
 
         const editorView = editorToCodeMirrorView(editor);
-        addColorStyleTagToEditor(editorView.contentDOM);
-
         const lines = value.split("\n");
 
         for (let lineIndex = lines.length - 1; lineIndex >= 0; lineIndex--) {
