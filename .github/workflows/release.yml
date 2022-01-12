@@ -33,7 +33,9 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - Add support for the obsidian front matter
+            - Fix tag completion in front matter not triggering sometimes
+            - Fix the enabled toggles of providers not saving the settings to disk
+            - Fix error with snippets and keydown event
           draft: false
           prerelease: false
       - name: Upload main.js
