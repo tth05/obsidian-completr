@@ -56,7 +56,7 @@ class FrontMatterSuggestionProvider implements SuggestionProvider {
             const {query} = matchWordBackwards(
                 context.editor,
                 context.end,
-                (char) => new RegExp("[" + settings.characterRegex + "/-_]").test(char),
+                (char) => new RegExp("[" + settings.characterRegex + "/\\-_]").test(char),
                 settings.maxLookBackDistance
             );
 
