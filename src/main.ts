@@ -1,6 +1,5 @@
 import {
-    EditorPosition,
-    MarkdownView,
+    EditorPosition, editorViewField,
     Plugin, TFile,
 } from "obsidian";
 import SnippetManager from "./snippet_manager";
@@ -114,7 +113,7 @@ export default class CompletrPlugin extends Plugin {
     private readonly handleKeydown = (event: KeyboardEvent, cm: EditorView) => {
         if (!["Enter", "Tab"].contains(event.key) || event.code === "completr")
             return;
-        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        const view = cm.state.field(editorViewField, false);
         if (!view)
             return;
 
