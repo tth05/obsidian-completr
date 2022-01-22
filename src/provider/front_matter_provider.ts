@@ -81,7 +81,7 @@ class FrontMatterSuggestionProvider implements SuggestionProvider {
     }
 
     private addTagsFromFile(file: TFile, cache: CachedMetadata) {
-        if (!cache || !cache.frontmatter) {
+        if (!cache || !cache.frontmatter || !cache.frontmatter.tags) {
             return;
         }
 
