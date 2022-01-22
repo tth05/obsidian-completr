@@ -89,6 +89,9 @@ class FrontMatterSuggestionProvider implements SuggestionProvider {
         this.globalTags.set(file.path, tags);
 
         for (let tag of cache.frontmatter.tags) {
+            if (!tag)
+                continue;
+
             tags.add(tag);
         }
     }
