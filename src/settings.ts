@@ -14,7 +14,7 @@ export interface CompletrSettings {
     fileScannerScanCurrent: boolean,
     wordListProviderEnabled: boolean,
     frontMatterProviderEnabled: boolean,
-    frontMatterTagAppendCommaSuffix: boolean,
+    frontMatterTagAppendSuffix: boolean,
 }
 
 export const DEFAULT_SETTINGS: CompletrSettings = {
@@ -27,5 +27,5 @@ export const DEFAULT_SETTINGS: CompletrSettings = {
     fileScannerScanCurrent: true,
     wordListProviderEnabled: true,
     frontMatterProviderEnabled: true,
-    frontMatterTagAppendCommaSuffix: true
+    frontMatterTagAppendSuffix: true
 }

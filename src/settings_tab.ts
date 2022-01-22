@@ -85,12 +85,12 @@ export default class CompletrSettingsTab extends PluginSettingTab {
         this.createEnabledSetting("frontMatterProviderEnabled", "Whether the front matter provider is enabled", containerEl);
 
         new Setting(containerEl)
-            .setName("Add comma suffix to tag completion")
-            .setDesc("Whether each completed tag should be suffixed with a comma. Allows faster insertion of multiple tags.")
+            .setName("Add suffix to tag completion")
+            .setDesc("Whether each completed tag should be suffixed with a comma or a newline (when typing in a multi-line list). Allows faster insertion of multiple tags.")
             .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.frontMatterTagAppendCommaSuffix)
+                .setValue(this.plugin.settings.frontMatterTagAppendSuffix)
                 .onChange(async val => {
-                    this.plugin.settings.frontMatterTagAppendCommaSuffix = val;
+                    this.plugin.settings.frontMatterTagAppendSuffix = val;
                     await this.plugin.saveSettings();
                 }));
 

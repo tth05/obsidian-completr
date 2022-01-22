@@ -3,6 +3,28 @@ import {CompletrSettings} from "../settings";
 import {CachedMetadata, Editor, EditorPosition, MetadataCache, TFile} from "obsidian";
 import {matchWordBackwards} from "../editor_helpers";
 
+function findTagCompletionType(currentLineIndex: number, currentLine: string, editor: Editor): "inline" | "multiline" | "none" {
+    //Easy case
+    if (currentLine.startsWith("tags: "))
+        return "inline";
+    //Check for YAML multi-line list
+    if (!currentLine.startsWith("- "))
+        return "none";
+
+    let foundListStart = false;
+    for (let i = currentLineIndex - 1; i >= 1; i--) {
+        let line = editor.getLine(i).trim();
+        //Found YAML key
+        if (line.endsWith(":")) {
+            //Check if we found the correct key
+            foundListStart = line.startsWith("tags:");
+            break;
+        }
+    }
+
+    return foundListStart ? "multiline" : "none";
+}
+
 class FrontMatterSuggestionProvider implements SuggestionProvider {
     blocksAllOtherProviders: boolean = true;
 
@@ -51,8 +73,12 @@ class FrontMatterSuggestionProvider implements SuggestionProvider {
             else if (lowerCaseQuery === "true" || lowerCaseQuery === "false")
                 return lowerCaseQuery === "true" ? possibilities.reverse() : possibilities;
             return [];
-        } else if (currentLine.startsWith("tags:")) { //Tag key
-            //We need a custom query to include `/` for tags.
+        } else { //Tag key
+            let completionType = findTagCompletionType(context.start.line, currentLine, context.editor);
+            if (completionType === "none")
+                return [];
+
+            //We need a custom query to force include `/`, `-`, `_` for tags.
             const {query} = matchWordBackwards(
                 context.editor,
                 context.end,
@@ -62,7 +88,7 @@ class FrontMatterSuggestionProvider implements SuggestionProvider {
 
             return this.getUniqueGlobalTags().filter(tag => tag.startsWith(query)).map(tag => ({
                 displayName: tag,
-                replacement: tag + (settings.frontMatterTagAppendCommaSuffix ? ", " : ""),
+                replacement: tag + (settings.frontMatterTagAppendSuffix ? (completionType === "inline" ? ", " : "\n- ") : ""),
                 overrideStart: {...context.end, ch: context.end.ch - query.length}
             })).sort((a, b) => a.displayName.length - b.displayName.length);
         }
@@ -125,6 +151,10 @@ const SNIPPETS: Suggestion[] = [
     {
         displayName: "tags: [#]",
         replacement: "tags: [~]"
+    },
+    {
+        displayName: "tags: \\...",
+        replacement: "tags:\n- ~"
     },
     {
         displayName: "aliases: [#]",
