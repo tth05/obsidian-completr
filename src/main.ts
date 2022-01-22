@@ -99,15 +99,17 @@ export default class CompletrPlugin extends Plugin {
     };
 
     private readonly handleCursorActivity = (cursor: EditorPosition) => {
+        if (!this.snippetManager.placeholderAtPos(cursor)) {
+            this.snippetManager.clearAllPlaceholders();
+        }
+
+        //Prevents the suggestion popup from flickering when typing
         if (this.cursorTriggeredByChange) {
             this.cursorTriggeredByChange = false;
             return;
         }
 
         this.suggestionPopup.close();
-        if (!this.snippetManager.placeholderAtPos(cursor)) {
-            this.snippetManager.clearAllPlaceholders();
-        }
     };
 
     private readonly handleKeydown = (event: KeyboardEvent, cm: EditorView) => {
