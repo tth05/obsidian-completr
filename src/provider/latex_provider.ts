@@ -38,7 +38,7 @@ class LatexSuggestionProvider implements SuggestionProvider {
         let editor = context.editor;
 
         let countBefore = countDollarSigns(
-            editor.getRange({line: 0, ch: 0}, context.start)
+            editor.getRange({line: Math.max(0, context.start.line - 50), ch: 0}, context.start)
         );
 
         //Check if we're in a LaTeX context
