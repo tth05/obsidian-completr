@@ -14,7 +14,7 @@ This plugin provides advanced auto-completion functionality for obsidian.
     - Provides completions for all tags in vault
 - Word list support
     - Load files where each line is a word
-    - Performant, even with very big lists
+    - Performant, even with very big [lists](#looking-for-word-lists)
 - Scanning your vault for words
     - Scans the current file or your whole vault to find new words which can then be suggested
 
@@ -36,7 +36,9 @@ Browse the community plugins list and search for `Completr`.
 #### Two million german words loaded
 ![Word list](https://user-images.githubusercontent.com/36999320/146680359-ae572473-8919-4927-a6f5-bc39800a5c23.gif)
 
-
+## Looking for word lists?
+- https://sourceforge.net/projects/germandict/
+- https://github.com/kpym/FrequencyDictionaries
 
 ## Development
 - Clone the repo to the `plugins` folder of an obsidian vault
