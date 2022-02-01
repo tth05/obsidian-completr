@@ -11,7 +11,7 @@ This plugin provides advanced auto-completion functionality for obsidian.
     - Allows `\begin...` completion for all environments
     - Support for inserting snippets with placeholders
 - YAML Front Matter support
-    - Provides completions for all tags in vault
+    - Learns any key with any value and provides completions for them
 - Word list support
     - Load files where each line is a word
     - Performant, even with very big [lists](#looking-for-word-lists)
