@@ -33,9 +33,8 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - Implement front matter tag completion support for YAML multi-line lists
-            - Fix some errors involving the front matter tag cache
-            - Fix snippet placeholders sometimes not being cleared
+            - Support custom tags and values in front matter provider
+            - Improve latex block detection speed and accuracy
           draft: false
           prerelease: false
       - name: Upload main.js
