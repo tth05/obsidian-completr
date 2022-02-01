@@ -6,20 +6,51 @@ import {
     SuggestionProvider
 } from "./provider";
 import {CompletrSettings} from "../settings";
+import {Editor, EditorPosition} from "obsidian";
 
-function countDollarSigns(str: string): number {
-    let count = 0;
-    let wasDollar = false;
-    for (let i = 0; i < str.length; i++) {
-        if (str.charAt(i) === "$") {
-            if (!wasDollar) count++;
-            wasDollar = !wasDollar;
-        } else {
-            wasDollar = false;
-        }
+function isInLatexBlock(editor: Editor, pos: EditorPosition): boolean {
+    const enum BlockType {
+        NONE,
+        SINGLE,
+        DOUBLE
     }
 
-    return count;
+    let blockStartingLine = pos.line;
+    let currentBlockType = BlockType.NONE;
+
+    for (let i = pos.line; i >= 0; i--) {
+        //Saves CPU for huge documents. Would break if a math block has more than 50 lines
+        if (blockStartingLine - i > 50)
+            return true;
+
+        const line = editor.getLine(i);
+        for (let j = pos.line == i ? pos.ch - 1 : line.length - 1; j >= 0; j--) {
+            if (line.charAt(j) !== '$')
+                continue;
+            let isDouble = j != 0 && line.charAt(j - 1) === "$";
+            if (isDouble)
+                j--;
+
+            blockStartingLine = 0;
+            if (currentBlockType === BlockType.SINGLE && isDouble || currentBlockType === BlockType.DOUBLE && !isDouble) {
+                return true;
+            } else if (!isDouble && currentBlockType === BlockType.SINGLE) {
+                currentBlockType = BlockType.NONE;
+            } else if (isDouble && currentBlockType === BlockType.DOUBLE) {
+                currentBlockType = BlockType.NONE;
+            } else {
+                blockStartingLine = i;
+                currentBlockType = isDouble ? BlockType.DOUBLE : BlockType.SINGLE;
+            }
+        }
+
+        //If the single block does not begin in the current line, then it is not closed meaning the cursor is inside
+        // this block
+        if (currentBlockType === BlockType.SINGLE)
+            return true;
+    }
+
+    return currentBlockType !== BlockType.NONE;
 }
 
 function substringUntil(str: string, delimiter: string): string {
@@ -37,12 +68,8 @@ class LatexSuggestionProvider implements SuggestionProvider {
 
         let editor = context.editor;
 
-        let countBefore = countDollarSigns(
-            editor.getRange({line: Math.max(0, context.start.line - 50), ch: 0}, context.start)
-        );
-
         //Check if we're in a LaTeX context
-        if (countBefore % 2 !== 1)
+        if (!isInLatexBlock(editor, context.start))
             return [];
 
         const isSeparatorBackslash = context.separatorChar === "\\";
