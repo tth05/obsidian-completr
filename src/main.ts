@@ -33,7 +33,7 @@ export default class CompletrPlugin extends Plugin {
 
         this.registerEvent(this.app.workspace.on('file-open', this.onFileOpened, this));
         this.registerEvent(this.app.metadataCache.on('changed', FrontMatter.onCacheChange, FrontMatter));
-        this.app.workspace.onLayoutReady(() => FrontMatter.loadGlobalTags(this.app.metadataCache, this.app.vault.getMarkdownFiles()));
+        this.app.workspace.onLayoutReady(() => FrontMatter.loadYAMLKeyCompletions(this.app.metadataCache, this.app.vault.getMarkdownFiles()));
 
         this.registerEditorExtension(markerStateField);
 

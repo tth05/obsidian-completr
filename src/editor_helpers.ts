@@ -45,3 +45,60 @@ export function matchWordBackwards(
 
     return {query, separatorChar};
 }
+
+export function isInFrontMatterBlock(editor: Editor, pos: EditorPosition): boolean {
+    if (editor.getLine(0) !== "---" || editor.getLine(1) === "---" || pos.line === 0)
+        return false;
+
+    for (let i = 2; i < Math.max(30, editor.lastLine()); i++) {
+        if (editor.getLine(i) === "---")
+            return pos.line < i;
+    }
+
+    return false;
+}
+
+export function isInLatexBlock(editor: Editor, pos: EditorPosition): boolean {
+    const enum BlockType {
+        NONE,
+        SINGLE,
+        DOUBLE
+    }
+
+    let blockStartingLine = pos.line;
+    let currentBlockType = BlockType.NONE;
+
+    for (let i = pos.line; i >= 0; i--) {
+        //Saves CPU for huge documents. Would break if a math block has more than 50 lines
+        if (blockStartingLine - i > 50)
+            return true;
+
+        const line = editor.getLine(i);
+        for (let j = pos.line == i ? pos.ch - 1 : line.length - 1; j >= 0; j--) {
+            if (line.charAt(j) !== '$')
+                continue;
+            let isDouble = j != 0 && line.charAt(j - 1) === "$";
+            if (isDouble)
+                j--;
+
+            blockStartingLine = 0;
+            if (currentBlockType === BlockType.SINGLE && isDouble || currentBlockType === BlockType.DOUBLE && !isDouble) {
+                return true;
+            } else if (!isDouble && currentBlockType === BlockType.SINGLE) {
+                currentBlockType = BlockType.NONE;
+            } else if (isDouble && currentBlockType === BlockType.DOUBLE) {
+                currentBlockType = BlockType.NONE;
+            } else {
+                blockStartingLine = i;
+                currentBlockType = isDouble ? BlockType.DOUBLE : BlockType.SINGLE;
+            }
+        }
+
+        //If the single block does not begin in the current line, then it is not closed meaning the cursor is inside
+        // this block
+        if (currentBlockType === BlockType.SINGLE)
+            return true;
+    }
+
+    return currentBlockType !== BlockType.NONE;
+}

@@ -1,14 +1,27 @@
-import {Suggestion, SuggestionContext, SuggestionProvider} from "./provider";
+import {getSuggestionDisplayName, Suggestion, SuggestionContext, SuggestionProvider} from "./provider";
 import {CompletrSettings} from "../settings";
-import {CachedMetadata, Editor, EditorPosition, MetadataCache, TFile} from "obsidian";
-import {matchWordBackwards} from "../editor_helpers";
+import {CachedMetadata, Editor, MetadataCache, TFile} from "obsidian";
+import {isInFrontMatterBlock, matchWordBackwards} from "../editor_helpers";
 
-function findTagCompletionType(currentLineIndex: number, currentLine: string, editor: Editor): "inline" | "multiline" | "none" {
+const BASE_SUGGESTION: Suggestion = {
+    displayName: "front-matter",
+    replacement: "---\n~\n---",
+    overrideStart: {line: 0, ch: 0}
+};
+
+const PUBLISH_SUGGESTION: Suggestion = {
+    displayName: "publish: #",
+    replacement: "publish: ~"
+};
+
+function findTagCompletionType(keyInfo: YAMLKeyInfo, currentLineIndex: number, currentLine: string, editor: Editor): "inline" | "multiline" | "none" {
+    const {key, isList} = keyInfo;
+
     //Easy case
-    if (currentLine.startsWith("tags: "))
+    if (currentLine.startsWith(key + ": "))
         return "inline";
     //Check for YAML multi-line list
-    if (!currentLine.startsWith("- "))
+    if (!currentLine.startsWith("- ") || !isList)
         return "none";
 
     let foundListStart = false;
@@ -17,7 +30,7 @@ function findTagCompletionType(currentLineIndex: number, currentLine: string, ed
         //Found YAML key
         if (line.endsWith(":")) {
             //Check if we found the correct key
-            foundListStart = line.startsWith("tags:");
+            foundListStart = line.startsWith(key + ":");
             break;
         }
     }
@@ -25,27 +38,66 @@ function findTagCompletionType(currentLineIndex: number, currentLine: string, ed
     return foundListStart ? "multiline" : "none";
 }
 
+interface YAMLKeyInfo {
+    key: string,
+    isList: boolean,
+    completions: Set<string>
+}
+
+class YAMLKeyCache {
+    private readonly listKeys: string[] = [];
+    private readonly keyMap: Map<string, Set<string>> = new Map<string, Set<string>>();
+
+    addEntry(key: string, value: string) {
+        let values = this.keyMap.get(key);
+        if (!values) {
+            values = new Set<string>();
+            this.keyMap.set(key, values);
+        }
+
+        values.add(value);
+    }
+
+    addEntries(key: string, values: string[]) {
+        let set = this.keyMap.get(key);
+        if (!set) {
+            set = new Set<string>();
+            this.keyMap.set(key, set);
+        }
+
+        for (let value of values) {
+            if (!value)
+                continue;
+
+            set.add(value);
+        }
+
+        this.listKeys.push(key);
+    }
+
+    isListKey(key: string): boolean {
+        return this.listKeys.contains(key);
+    }
+
+    getCompletions(): YAMLKeyInfo[] {
+        return [...this.keyMap.entries()].map(([e, v]) => ({key: e, isList: this.isListKey(e), completions: v}));
+    }
+}
+
 class FrontMatterSuggestionProvider implements SuggestionProvider {
     blocksAllOtherProviders: boolean = true;
 
-    //This is a map to properly handle tag removals
-    private globalTags: Map<string, Set<string>> = new Map<string, Set<string>>();
+    private fileSuggestionCache: Map<string, YAMLKeyCache> = new Map<string, YAMLKeyCache>();
 
     getSuggestions(context: SuggestionContext, settings: CompletrSettings): Suggestion[] {
         if (!settings.frontMatterProviderEnabled)
             return [];
 
         const firstLine = context.editor.getLine(0);
-        const isInFrontMatter = FrontMatterSuggestionProvider.isInFrontMatter(context.editor, context.start);
+        const isInFrontMatter = isInFrontMatterBlock(context.editor, context.start);
 
         if (!isInFrontMatter && context.start.line === 0 && (firstLine === "" || "front-matter".startsWith(firstLine))) {
-            return [
-                {
-                    displayName: "front-matter",
-                    replacement: "---\n~\n---",
-                    overrideStart: {line: 0, ch: 0}
-                }
-            ]
+            return [BASE_SUGGESTION];
         } else if (!isInFrontMatter) {
             return [];
         }
@@ -54,11 +106,29 @@ class FrontMatterSuggestionProvider implements SuggestionProvider {
 
         //Match snippets
         if (context.start.ch === 0) {
-            return SNIPPETS.filter((snippet) => {
-                if (typeof snippet === "string")
-                    throw new Error("Unreachable");
+            const suggestions: Suggestion[] = this.getPossibleCompletions().flatMap(i => {
+                if (!i.isList) {
+                    return [{
+                        displayName: i.key + ": #",
+                        replacement: i.key + ": ~"
+                    }];
+                }
 
-                const key = snippet.displayName.substring(0, snippet.displayName.indexOf(":"));
+                return [
+                    {
+                        displayName: i.key + ": [#]",
+                        replacement: i.key + ": [~]"
+                    },
+                    {
+                        displayName: i.key + ": \\...",
+                        replacement: i.key + ":\n- ~"
+                    }
+                ];
+            })
+            suggestions.push(PUBLISH_SUGGESTION);
+            return suggestions.filter((snippet) => {
+                const displayName = getSuggestionDisplayName(snippet);
+                const key = displayName.substring(0, displayName.indexOf(":"));
                 return key.startsWith(lowerCaseQuery);
             });
         }
@@ -66,106 +136,102 @@ class FrontMatterSuggestionProvider implements SuggestionProvider {
         //YAML key specific completions
         const currentLine = context.editor.getLine(context.start.line);
         if (currentLine.startsWith("publish:")) { //Publish key
-            const possibilities = ["true", "false"];
-            const partialMatches = possibilities.filter(val => val.startsWith(lowerCaseQuery) && val !== lowerCaseQuery);
-            if (partialMatches.length > 0)
-                return partialMatches;
-            else if (lowerCaseQuery === "true" || lowerCaseQuery === "false")
-                return lowerCaseQuery === "true" ? possibilities.reverse() : possibilities;
-            return [];
-        } else { //Tag key
-            let completionType = findTagCompletionType(context.start.line, currentLine, context.editor);
-            if (completionType === "none")
-                return [];
-
-            //We need a custom query to force include `/`, `-`, `_` for tags.
-            const {query} = matchWordBackwards(
-                context.editor,
-                context.end,
-                (char) => new RegExp("[" + settings.characterRegex + "/\\-_]").test(char),
-                settings.maxLookBackDistance
-            );
-
-            return this.getUniqueGlobalTags().filter(tag => tag.startsWith(query)).map(tag => ({
-                displayName: tag,
-                replacement: tag + (settings.frontMatterTagAppendSuffix ? (completionType === "inline" ? ", " : "\n- ") : ""),
-                overrideStart: {...context.end, ch: context.end.ch - query.length}
-            })).sort((a, b) => a.displayName.length - b.displayName.length);
+            return FrontMatterSuggestionProvider.getPublishSuggestions(lowerCaseQuery);
         }
 
-        return [];
+        //Custom keys
+        const {key, type} = this.getPossibleCompletions()
+            .map(possibleKey => ({
+                key: possibleKey,
+                type: findTagCompletionType(possibleKey, context.start.line, currentLine, context.editor)
+            }))
+            .filter(({type}) => type !== "none")
+            .shift() ?? {};
+        if (!key)
+            return [];
+
+        //We need a custom query to force include `/`, `-`, `_` for tags.
+        const {query} = matchWordBackwards(
+            context.editor,
+            context.end,
+            (char) => new RegExp("[" + settings.characterRegex + "/\\-_]").test(char),
+            settings.maxLookBackDistance
+        );
+
+        return [...key.completions].filter(tag => tag.startsWith(query)).map(tag => ({
+            displayName: tag,
+            replacement: tag + (settings.frontMatterTagAppendSuffix && key.isList ? (type === "inline" ? ", " : "\n- ") : ""),
+            overrideStart: {...context.end, ch: context.end.ch - query.length}
+        })).sort((a, b) => a.displayName.length - b.displayName.length);
     }
 
-    loadGlobalTags(cache: MetadataCache, files: TFile[]) {
+    loadYAMLKeyCompletions(cache: MetadataCache, files: TFile[]) {
         for (let file of files) {
-            this.addTagsFromFile(file, cache.getFileCache(file));
+            this.addKeyCompletionsFromFile(file, cache.getFileCache(file));
         }
     }
 
     readonly onCacheChange = (file: TFile, data: string, cache: CachedMetadata) => {
-        this.addTagsFromFile(file, cache);
+        this.addKeyCompletionsFromFile(file, cache);
     }
 
-    private addTagsFromFile(file: TFile, cache: CachedMetadata) {
-        if (!cache || !cache.frontmatter || !cache.frontmatter.tags) {
+    private addKeyCompletionsFromFile(file: TFile, cache: CachedMetadata) {
+        if (!file || !cache || !cache.frontmatter) {
             return;
         }
 
-        const tags = new Set<string>();
-        this.globalTags.set(file.path, tags);
+        const tags = new YAMLKeyCache();
+        this.fileSuggestionCache.set(file.path, tags);
 
-        for (let tag of cache.frontmatter.tags) {
-            if (!tag)
+        for (let key of Object.keys(cache.frontmatter)) {
+            if (key === "position" || key === "publish")
                 continue;
 
-            tags.add(tag);
-        }
-    }
+            let prop = cache.frontmatter[key];
+            if (!prop)
+                continue;
 
-    private getUniqueGlobalTags(): string[] {
-        const allTags = new Set<string>();
-        for (let set of this.globalTags.values()) {
-            for (let tag of set) {
-                allTags.add(tag);
+            if (Array.isArray(prop)) {
+                tags.addEntries(key, prop);
+            } else {
+                tags.addEntry(key, prop);
             }
         }
-        return [...allTags];
     }
 
-    private static isInFrontMatter(editor: Editor, pos: EditorPosition): boolean {
-        if (editor.getLine(0) !== "---" || editor.getLine(1) === "---" || pos.line === 0)
-            return false;
+    private getPossibleCompletions(): YAMLKeyInfo[] {
+        const listKeys = new Set<string>();
+        const allKeys = new Map<string, Set<string>>();
+        for (let cache of this.fileSuggestionCache.values()) {
+            for (let keyInfo of cache.getCompletions()) {
+                let completions = allKeys.get(keyInfo.key);
+                if (!completions) {
+                    completions = new Set<string>();
+                    allKeys.set(keyInfo.key, completions);
+                }
 
-        for (let i = 2; i < Math.max(30, editor.lastLine()); i++) {
-            if (editor.getLine(i) === "---")
-                return pos.line < i;
+                keyInfo.completions.forEach(c => completions.add(c));
+                if (keyInfo.isList)
+                    listKeys.add(keyInfo.key);
+            }
         }
 
-        return false;
+        return [...allKeys.entries()].map(([k, completions]) => ({
+            key: k,
+            isList: listKeys.has(k),
+            completions: completions
+        }));
+    }
+
+    private static getPublishSuggestions(lowerCaseQuery: string) {
+        const possibilities = ["true", "false"];
+        const partialMatches = possibilities.filter(val => val.startsWith(lowerCaseQuery) && val !== lowerCaseQuery);
+        if (partialMatches.length > 0)
+            return partialMatches;
+        else if (lowerCaseQuery === "true" || lowerCaseQuery === "false")
+            return lowerCaseQuery === "true" ? possibilities.reverse() : possibilities;
+        return [];
     }
 }
 
 export const FrontMatter = new FrontMatterSuggestionProvider();
-
-const SNIPPETS: Suggestion[] = [
-    {
-        displayName: "tags: [#]",
-        replacement: "tags: [~]"
-    },
-    {
-        displayName: "tags: \\...",
-        replacement: "tags:\n- ~"
-    },
-    {
-        displayName: "aliases: [#]",
-        replacement: "aliases: [~]"
-    },
-    {
-        displayName: "publish: #",
-        replacement: "publish: ~"
-    },
-    {
-        displayName: "cssclass: #",
-        replacement: "cssclass: ~"
-    },
-]
