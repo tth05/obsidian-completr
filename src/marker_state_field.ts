@@ -18,7 +18,7 @@ export const markerStateField = StateField.define<RangeSet<Decoration>>({
             else if (effect.is(clearMarks))
                 value = value.update({filter: () => false});
             else if (effect.is(removeMarkBySpecAttribute))
-                value = value.update({filter: (from, to, ref) => ref.spec[effect.value.attribute] !== effect.value.reference});
+                value = value.update({filter: (from, to, ref) => ref.spec[effect.value.attribute] !== effect.value[effect.value.attribute]});
         }
 
         return value;

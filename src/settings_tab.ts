@@ -54,6 +54,22 @@ export default class CompletrSettingsTab extends PluginSettingTab {
             });
 
         new Setting(containerEl)
+            .setName("Minimum word trigger length")
+            .setDesc("The minimum length a word has to be, to trigger suggestions. This value is ignored by the LaTeX provider.")
+            .addText(text => {
+                text.inputEl.type = "number";
+                text
+                    .setValue(this.plugin.settings.minWordTriggerLength + "")
+                    .onChange(async val => {
+                        if (!val || val.length < 1)
+                            return;
+
+                        this.plugin.settings.minWordTriggerLength = parseInt(val);
+                        await this.plugin.saveSettings();
+                    });
+            });
+
+        new Setting(containerEl)
             .setName("Word insertion mode")
             .setDesc("The insertion mode that is used. Ignore-case would suggest 'Hello' if the typed text is 'hello', match-case would not. " +
                 "Append would complete 'Hell' with 'Hello' while replace would complete it with 'hello' instead (if only 'hello' was a known word).")
