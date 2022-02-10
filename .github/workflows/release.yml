@@ -33,8 +33,7 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - Support custom tags and values in front matter provider
-            - Improve latex block detection speed and accuracy
+            - New minimum word trigger length config option
           draft: false
           prerelease: false
       - name: Upload main.js
