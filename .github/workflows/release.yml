@@ -33,9 +33,7 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - Fix default value for minimum word length config option
-            - Ignore minimum word length config option in front matter provider
-            - Fix completions at start of line not working
+            - Fix LaTeX provider breaking after 50 lines
           draft: false
           prerelease: false
       - name: Upload main.js
