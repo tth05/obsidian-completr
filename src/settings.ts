@@ -21,7 +21,7 @@ export interface CompletrSettings {
 export const DEFAULT_SETTINGS: CompletrSettings = {
     characterRegex: "a-zA-ZöäüÖÄÜß",
     maxLookBackDistance: 50,
-    minWordLength: 6,
+    minWordLength: 2,
     minWordTriggerLength: 3,
     wordInsertionMode: WordInsertionMode.IGNORE_CASE_REPLACE,
     latexProviderEnabled: true,
