@@ -65,14 +65,10 @@ export function isInLatexBlock(editor: Editor, pos: EditorPosition): boolean {
         DOUBLE
     }
 
-    let blockStartingLine = pos.line;
+    let blockStartingLine = 0;
     let currentBlockType = BlockType.NONE;
 
-    for (let i = pos.line; i >= 0; i--) {
-        //Saves CPU for huge documents. Would break if a math block has more than 50 lines
-        if (blockStartingLine - i > 50)
-            return true;
-
+    for (let i = pos.line; i >= Math.max(0, pos.line - 1000); i--) {
         const line = editor.getLine(i);
         for (let j = pos.line == i ? pos.ch - 1 : line.length - 1; j >= 0; j--) {
             if (line.charAt(j) !== '$')
