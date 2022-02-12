@@ -70,8 +70,6 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
             this.justClosed = false;
             return null;
         }
-        if (cursor.ch === 0)
-            return null;
 
         let {
             query,
