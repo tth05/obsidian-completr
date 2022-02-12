@@ -33,7 +33,7 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - Fix LaTeX provider breaking after 50 lines
+            - Enable unicode mode for character regex (Allows usage of \p{L})
           draft: false
           prerelease: false
       - name: Upload main.js
