@@ -114,7 +114,7 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
 
     private getCharacterRegex(): RegExp {
         if (this.characterRegex !== this.settings.characterRegex)
-            this.compiledCharacterRegex = new RegExp("[" + this.settings.characterRegex + "]");
+            this.compiledCharacterRegex = new RegExp("[" + this.settings.characterRegex + "]", "u");
 
         return this.compiledCharacterRegex;
     }
