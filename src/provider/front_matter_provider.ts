@@ -90,7 +90,7 @@ class FrontMatterSuggestionProvider implements SuggestionProvider {
     private fileSuggestionCache: Map<string, YAMLKeyCache> = new Map<string, YAMLKeyCache>();
 
     getSuggestions(context: SuggestionContext, settings: CompletrSettings): Suggestion[] {
-        if (!settings.frontMatterProviderEnabled || context.query.length < settings.minWordTriggerLength)
+        if (!settings.frontMatterProviderEnabled)
             return [];
 
         const firstLine = context.editor.getLine(0);
