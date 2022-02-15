@@ -1,7 +1,7 @@
 {
     "id": "obsidian-completr",
     "name": "Completr",
-    "version": "2.4.3",
+    "version": "2.4.4",
     "minAppVersion": "0.13.14",
     "description": "This plugin provides advanced auto-completion functionality for Obsidian",
     "author": "tth05",

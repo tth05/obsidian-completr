@@ -33,7 +33,9 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - Enable unicode mode for character regex (Allows usage of \p{L})
+            - New setting to allow using Tab for suggestion insertion
+            - The popup won't be triggered anymore when switching to the previous line
+            - The front matter tag suggestions now use the obsidian tag parser
           draft: false
           prerelease: false
       - name: Upload main.js
