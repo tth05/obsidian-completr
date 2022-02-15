@@ -70,6 +70,20 @@ export default class CompletrSettingsTab extends PluginSettingTab {
             });
 
         new Setting(containerEl)
+            .setName("Tab key for completion insertion")
+            .setDesc("This option enables the use of the Tab key alongside of the Enter key to insert suggestions. " +
+                "This will disable the default Tab behavior while the suggestion popup is open. Hold shift to bypass this.")
+            .addToggle(toggle => {
+                toggle
+                    .setValue(this.plugin.settings.enableTabKeyForCompletionInsertion)
+                    .onChange(async val => {
+                        this.plugin.settings.enableTabKeyForCompletionInsertion = val;
+                        this.plugin.suggestionPopup.setTabInsertionEnabled(val);
+                        await this.plugin.saveSettings();
+                    });
+            });
+
+        new Setting(containerEl)
             .setName("Word insertion mode")
             .setDesc("The insertion mode that is used. Ignore-case would suggest 'Hello' if the typed text is 'hello', match-case would not. " +
                 "Append would complete 'Hell' with 'Hello' while replace would complete it with 'hello' instead (if only 'hello' was a known word).")

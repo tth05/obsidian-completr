@@ -28,6 +28,8 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
     private characterRegex: string;
     private compiledCharacterRegex: RegExp;
 
+    private tabKeybindRegistration: Object;
+
     private readonly snippetManager: SnippetManager;
     private readonly settings: CompletrSettings;
     private readonly disableSnippets: boolean;
@@ -37,6 +39,8 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
         this.disableSnippets = (app.vault as any).config?.legacyEditor;
         this.settings = settings;
         this.snippetManager = snippetManager;
+
+        this.setTabInsertionEnabled(settings.enableTabKeyForCompletionInsertion);
     }
 
     getSuggestions(
@@ -110,6 +114,25 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
 
         this.close();
         this.justClosed = true;
+    }
+
+    setTabInsertionEnabled(val: boolean) {
+        let self = this as any;
+        this.disableTabInsertion();
+
+        if (val) {
+            this.tabKeybindRegistration = self.scope.register([], "Tab", (event: Event) => {
+                self.suggestions.useSelectedItem(event);
+                return false;
+            });
+        }
+    }
+
+    private disableTabInsertion() {
+        let self = this as any;
+
+        if (this.tabKeybindRegistration)
+            self.scope.unregister(this.tabKeybindRegistration);
     }
 
     private getCharacterRegex(): RegExp {

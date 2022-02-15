@@ -19,7 +19,7 @@ export default class CompletrPlugin extends Plugin {
     settings: CompletrSettings;
 
     private snippetManager: SnippetManager;
-    private suggestionPopup: SuggestionPopup;
+    private _suggestionPopup: SuggestionPopup;
 
     private cursorTriggeredByChange = false;
 
@@ -27,9 +27,9 @@ export default class CompletrPlugin extends Plugin {
         await this.loadSettings();
 
         this.snippetManager = new SnippetManager();
-        this.suggestionPopup = new SuggestionPopup(this.app, this.settings, this.snippetManager);
+        this._suggestionPopup = new SuggestionPopup(this.app, this.settings, this.snippetManager);
 
-        this.registerEditorSuggest(this.suggestionPopup);
+        this.registerEditorSuggest(this._suggestionPopup);
 
         this.registerEvent(this.app.workspace.on('file-open', this.onFileOpened, this));
         this.registerEvent(this.app.metadataCache.on('changed', FrontMatter.onCacheChange, FrontMatter));
@@ -63,7 +63,7 @@ export default class CompletrPlugin extends Plugin {
             ],
             editorCallback: (editor) => {
                 //This is the same function that is called by obsidian when you type a character
-                (this.suggestionPopup as any).trigger(editor, this.app.workspace.getActiveFile(), true);
+                (this._suggestionPopup as any).trigger(editor, this.app.workspace.getActiveFile(), true);
             }
         });
 
@@ -79,8 +79,13 @@ export default class CompletrPlugin extends Plugin {
 
     async loadSettings() {
         this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+
         WordList.loadFromFiles(this.app.vault, this.settings);
         FileScanner.loadData(this.app.vault);
+    }
+
+    get suggestionPopup() {
+        return this._suggestionPopup;
     }
 
     async saveSettings() {
@@ -109,7 +114,7 @@ export default class CompletrPlugin extends Plugin {
             return;
         }
 
-        this.suggestionPopup.close();
+        this._suggestionPopup.close();
     };
 
     private readonly handleKeydown = (event: KeyboardEvent, cm: EditorView) => {
@@ -126,13 +131,13 @@ export default class CompletrPlugin extends Plugin {
 
         //Pass through enter holding shift and tab always. Allows going to the next line while the popup is open
         if (event.shiftKey || isTabKey) {
-            this.suggestionPopup.close();
+            this._suggestionPopup.close();
             if (!placeholder) {
                 //Hack: Dispatch the event again to properly continue lists and other obsidian formatting features.
                 let keyboardEvent = new KeyboardEvent(event.type, {
                     key: event.key,
                     altKey: event.altKey,
-                    shiftKey: !isTabKey ? false : event.shiftKey,
+                    shiftKey: !isTabKey || this.settings.enableTabKeyForCompletionInsertion ? false : event.shiftKey,
                     keyCode: event.keyCode,
                     charCode: event.charCode,
                     //Prevents stackoverflow of keydown events
