@@ -8,7 +8,7 @@ import {CompletrSettings, DEFAULT_SETTINGS} from "./settings";
 import {WordList} from "./provider/word_list_provider";
 import {FileScanner} from "./provider/scanner_provider";
 import CompletrSettingsTab from "./settings_tab";
-import {EditorView} from "@codemirror/view";
+import {EditorView, ViewUpdate} from "@codemirror/view";
 import {Prec} from "@codemirror/state";
 import {editorToCodeMirrorState, posFromIndex} from "./editor_helpers";
 import {markerStateField} from "./marker_state_field";
@@ -20,8 +20,6 @@ export default class CompletrPlugin extends Plugin {
 
     private snippetManager: SnippetManager;
     private _suggestionPopup: SuggestionPopup;
-
-    private cursorTriggeredByChange = false;
 
     async onload() {
         await this.loadSettings();
@@ -37,15 +35,7 @@ export default class CompletrPlugin extends Plugin {
 
         this.registerEditorExtension(markerStateField);
 
-        this.registerEditorExtension(EditorView.updateListener.of(update => {
-            if (update.docChanged) {
-                this.handleDocChange();
-            }
-
-            if (update.selectionSet) {
-                this.handleCursorActivity(posFromIndex(update.state.doc, update.state.selection.main.head))
-            }
-        }));
+        this.registerEditorExtension(EditorView.updateListener.of(new CursorActivityListener(this.snippetManager, this._suggestionPopup).listener));
         this.registerEditorExtension(Prec.highest(EditorView.domEventHandlers({
             "keydown": this.handleKeydown
         })));
@@ -99,24 +89,6 @@ export default class CompletrPlugin extends Plugin {
         FileScanner.scanFile(this.settings, file, true);
     }
 
-    private readonly handleDocChange = () => {
-        this.cursorTriggeredByChange = true;
-    };
-
-    private readonly handleCursorActivity = (cursor: EditorPosition) => {
-        if (!this.snippetManager.placeholderAtPos(cursor)) {
-            this.snippetManager.clearAllPlaceholders();
-        }
-
-        //Prevents the suggestion popup from flickering when typing
-        if (this.cursorTriggeredByChange) {
-            this.cursorTriggeredByChange = false;
-            return;
-        }
-
-        this._suggestionPopup.close();
-    };
-
     private readonly handleKeydown = (event: KeyboardEvent, cm: EditorView) => {
         if (!["Enter", "Tab"].contains(event.key) || event.code === "completr")
             return;
@@ -129,7 +101,7 @@ export default class CompletrPlugin extends Plugin {
 
         const isTabKey = event.key === "Tab";
 
-        //Pass through enter holding shift and tab always. Allows going to the next line while the popup is open
+        //Pass through enter while holding shift or tab. Allows going to the next line while the popup is open
         if (event.shiftKey || isTabKey) {
             this._suggestionPopup.close();
             if (!placeholder) {
@@ -162,4 +134,52 @@ export default class CompletrPlugin extends Plugin {
             }]);
         }
     }
+}
+
+class CursorActivityListener {
+
+    private readonly snippetManager: SnippetManager;
+    private readonly suggestionPopup: SuggestionPopup;
+
+    private cursorTriggeredByChange = false;
+    private lastCursorLine = -1;
+
+    constructor(snippetManager: SnippetManager, suggestionPopup: SuggestionPopup) {
+        this.snippetManager = snippetManager;
+        this.suggestionPopup = suggestionPopup;
+    }
+
+    readonly listener = (update: ViewUpdate) => {
+        if (update.docChanged) {
+            this.handleDocChange();
+        }
+
+        if (update.selectionSet) {
+            this.handleCursorActivity(posFromIndex(update.state.doc, update.state.selection.main.head))
+        }
+    };
+
+    private readonly handleDocChange = () => {
+        this.cursorTriggeredByChange = true;
+    };
+
+    private readonly handleCursorActivity = (cursor: EditorPosition) => {
+        //This prevents the popup from opening when switching to the previous line
+        if (this.lastCursorLine == cursor.line + 1)
+            this.suggestionPopup.preventNextTrigger();
+        this.lastCursorLine = cursor.line;
+
+        //Clear all placeholders when moving cursor outside of them
+        if (!this.snippetManager.placeholderAtPos(cursor)) {
+            this.snippetManager.clearAllPlaceholders();
+        }
+
+        //Prevents the suggestion popup from flickering when typing
+        if (this.cursorTriggeredByChange) {
+            this.cursorTriggeredByChange = false;
+            return;
+        }
+
+        this.suggestionPopup.close();
+    };
 }

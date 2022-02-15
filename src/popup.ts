@@ -128,6 +128,10 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
         }
     }
 
+    preventNextTrigger() {
+        this.justClosed = true;
+    }
+
     private disableTabInsertion() {
         let self = this as any;
 
