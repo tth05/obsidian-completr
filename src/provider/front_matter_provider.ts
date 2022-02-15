@@ -1,6 +1,6 @@
 import {getSuggestionDisplayName, Suggestion, SuggestionContext, SuggestionProvider} from "./provider";
 import {CompletrSettings} from "../settings";
-import {CachedMetadata, Editor, MetadataCache, TFile} from "obsidian";
+import {CachedMetadata, Editor, getAllTags, MetadataCache, TFile} from "obsidian";
 import {isInFrontMatterBlock, matchWordBackwards} from "../editor_helpers";
 
 const BASE_SUGGESTION: Suggestion = {
@@ -180,11 +180,11 @@ class FrontMatterSuggestionProvider implements SuggestionProvider {
             return;
         }
 
-        const tags = new YAMLKeyCache();
-        this.fileSuggestionCache.set(file.path, tags);
+        const keyCache = new YAMLKeyCache();
+        this.fileSuggestionCache.set(file.path, keyCache);
 
         for (let key of Object.keys(cache.frontmatter)) {
-            if (key === "position" || key === "publish")
+            if (key === "position" || key === "publish" || key === "tags")
                 continue;
 
             let prop = cache.frontmatter[key];
@@ -192,11 +192,16 @@ class FrontMatterSuggestionProvider implements SuggestionProvider {
                 continue;
 
             if (Array.isArray(prop)) {
-                tags.addEntries(key, prop);
+                keyCache.addEntries(key, prop);
             } else {
-                tags.addEntry(key, prop);
+                keyCache.addEntry(key, prop);
             }
         }
+
+        //Handle tags using the specialized obsidian parser
+        const tags = getAllTags(cache);
+        if (tags && tags.length > 0)
+            keyCache.addEntries("tags", tags.map(t => t.substring(1)));
     }
 
     private getPossibleCompletions(): YAMLKeyInfo[] {
