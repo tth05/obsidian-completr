@@ -19,7 +19,7 @@ export abstract class DictionaryProvider implements SuggestionProvider {
         const list = ignoreCase ?
             [(this.wordMap.get(firstChar) ?? []), (this.wordMap.get(firstChar.toUpperCase()) ?? [])] //Get both lists if we're ignoring case
             :
-            [this.wordMap.get(firstChar)];
+            [this.wordMap.get(firstChar) ?? []];
 
         if (!list || list.length < 1)
             return [];
