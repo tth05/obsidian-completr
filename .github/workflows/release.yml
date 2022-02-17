@@ -33,9 +33,8 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - New setting to allow using Tab for suggestion insertion
-            - The popup won't be triggered anymore when switching to the previous line
-            - The front matter tag suggestions now use the obsidian tag parser
+            - Fix ignore-case-append insertion mode not maintaining case
+            - Fix match-case-replace insertion mode throwing an error
           draft: false
           prerelease: false
       - name: Upload main.js
