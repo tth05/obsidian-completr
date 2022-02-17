@@ -37,7 +37,7 @@ export abstract class DictionaryProvider implements SuggestionProvider {
 
         //In append mode we combine the query with the suggestions
         if (settings.wordInsertionMode === WordInsertionMode.IGNORE_CASE_APPEND) {
-            result = result.map(s => query + s.substring(query.length, s.length));
+            result = result.map(s => context.query + s.substring(query.length, s.length));
         }
 
         return result;
