@@ -1,10 +1,7 @@
-import {
-    EditorPosition, editorViewField,
-    Plugin, TFile,
-} from "obsidian";
+import {EditorPosition, editorViewField, Plugin, TFile,} from "obsidian";
 import SnippetManager from "./snippet_manager";
 import SuggestionPopup from "./popup";
-import {CompletrSettings, DEFAULT_SETTINGS} from "./settings";
+import {CompletrSettings, DEFAULT_SETTINGS, InsertionKey} from "./settings";
 import {WordList} from "./provider/word_list_provider";
 import {FileScanner} from "./provider/scanner_provider";
 import CompletrSettingsTab from "./settings_tab";
@@ -90,7 +87,7 @@ export default class CompletrPlugin extends Plugin {
     }
 
     private readonly handleKeydown = (event: KeyboardEvent, cm: EditorView) => {
-        if (!["Enter", "Tab"].contains(event.key) || event.code === "completr")
+        if (!Object.values(InsertionKey).contains(event.key as any) || event.code === "completr")
             return;
         const view = cm.state.field(editorViewField, false);
         if (!view)
@@ -99,17 +96,18 @@ export default class CompletrPlugin extends Plugin {
         const editor = view.editor;
         const placeholder = this.snippetManager.placeholderAtPos(editor.getCursor());
 
-        const isTabKey = event.key === "Tab";
+        const isInsertionKey = event.key != this.settings.insertionKey;
 
         //Pass through enter while holding shift or tab. Allows going to the next line while the popup is open
-        if (event.shiftKey || isTabKey) {
+        if (event.shiftKey || isInsertionKey) {
             this._suggestionPopup.close();
             if (!placeholder) {
                 //Hack: Dispatch the event again to properly continue lists and other obsidian formatting features.
                 let keyboardEvent = new KeyboardEvent(event.type, {
                     key: event.key,
                     altKey: event.altKey,
-                    shiftKey: !isTabKey || this.settings.enableTabKeyForCompletionInsertion ? false : event.shiftKey,
+                    //Shift enter does not seem to work very well
+                    shiftKey: event.key === InsertionKey.ENTER ? false : event.shiftKey,
                     keyCode: event.keyCode,
                     charCode: event.charCode,
                     //Prevents stackoverflow of keydown events

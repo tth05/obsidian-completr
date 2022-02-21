@@ -2,7 +2,7 @@ import {App, ButtonComponent, Modal, Notice, PluginSettingTab, Setting} from "ob
 import CompletrPlugin from "./main";
 import {FileScanner} from "./provider/scanner_provider";
 import {WordList} from "./provider/word_list_provider";
-import {CompletrSettings, WordInsertionMode} from "./settings";
+import {CompletrSettings, InsertionKey, WordInsertionMode} from "./settings";
 
 export default class CompletrSettingsTab extends PluginSettingTab {
 
@@ -70,15 +70,16 @@ export default class CompletrSettingsTab extends PluginSettingTab {
             });
 
         new Setting(containerEl)
-            .setName("Tab key for completion insertion")
-            .setDesc("This option enables the use of the Tab key alongside of the Enter key to insert suggestions. " +
-                "This will disable the default Tab behavior while the suggestion popup is open. Hold shift to bypass this.")
-            .addToggle(toggle => {
-                toggle
-                    .setValue(this.plugin.settings.enableTabKeyForCompletionInsertion)
+            .setName("Insertion key")
+            .setDesc("The key you want to use to insert suggestions while the popup is open.")
+            .addDropdown(dropdown => {
+                dropdown
+                    .addOption(InsertionKey.ENTER, InsertionKey.ENTER)
+                    .addOption(InsertionKey.TAB, InsertionKey.TAB)
+                    .setValue(this.plugin.settings.insertionKey)
                     .onChange(async val => {
-                        this.plugin.settings.enableTabKeyForCompletionInsertion = val;
-                        this.plugin.suggestionPopup.setTabInsertionEnabled(val);
+                        this.plugin.settings.insertionKey = val as InsertionKey;
+                        this.plugin.suggestionPopup.setInsertionKey(val as InsertionKey);
                         await this.plugin.saveSettings();
                     });
             });

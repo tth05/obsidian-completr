@@ -114,7 +114,6 @@ const LATEX_COMMANDS: Suggestion[] = [
         {name: "xalignat", paramCount: 1, hasStarVersion: true},
         {name: "xxalignat", paramCount: 1, hasStarVersion: false},
     ]),
-    "\\yeetus{#}\nyoom{#}test\n#",
     "\\above{#}{#}",
     "\\verb|#|",
     "\\left\\",

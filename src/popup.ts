@@ -12,7 +12,7 @@ import {
     TFile
 } from "obsidian";
 import SnippetManager from "./snippet_manager";
-import {CompletrSettings} from "./settings";
+import {CompletrSettings, InsertionKey} from "./settings";
 import {FrontMatter} from "./provider/front_matter_provider";
 import {matchWordBackwards} from "./editor_helpers";
 
@@ -28,7 +28,7 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
     private characterRegex: string;
     private compiledCharacterRegex: RegExp;
 
-    private tabKeybindRegistration: Object;
+    private insertionKeybindRegistration: Object;
 
     private readonly snippetManager: SnippetManager;
     private readonly settings: CompletrSettings;
@@ -40,7 +40,12 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
         this.settings = settings;
         this.snippetManager = snippetManager;
 
-        this.setTabInsertionEnabled(settings.enableTabKeyForCompletionInsertion);
+        //Remove default enter key registration
+        let self = this as any;
+        self.scope.unregister(self.scope.keys.find((k: any) => k.key === "Enter"));
+
+        //Set custom key registration
+        this.setInsertionKey(settings.insertionKey);
     }
 
     getSuggestions(
@@ -116,27 +121,26 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
         this.justClosed = true;
     }
 
-    setTabInsertionEnabled(val: boolean) {
-        let self = this as any;
-        this.disableTabInsertion();
-
-        if (val) {
-            this.tabKeybindRegistration = self.scope.register([], "Tab", (event: Event) => {
-                self.suggestions.useSelectedItem(event);
-                return false;
-            });
-        }
-    }
-
     preventNextTrigger() {
         this.justClosed = true;
     }
 
-    private disableTabInsertion() {
+    setInsertionKey(key: InsertionKey) {
+        let self = this as any;
+        this.disableInsertionKey();
+
+        console.log("Set", key);
+        this.insertionKeybindRegistration = self.scope.register([], key, (event: Event) => {
+            self.suggestions.useSelectedItem(event);
+            return false;
+        });
+    }
+
+    private disableInsertionKey() {
         let self = this as any;
 
-        if (this.tabKeybindRegistration)
-            self.scope.unregister(this.tabKeybindRegistration);
+        if (this.insertionKeybindRegistration)
+            self.scope.unregister(this.insertionKeybindRegistration);
     }
 
     private getCharacterRegex(): RegExp {

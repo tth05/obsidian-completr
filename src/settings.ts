@@ -4,12 +4,17 @@ export const enum WordInsertionMode {
     IGNORE_CASE_APPEND = "Ignore-Case & Append"
 }
 
+export enum InsertionKey {
+    ENTER = "Enter",
+    TAB = "Tab"
+}
+
 export interface CompletrSettings {
     characterRegex: string,
     maxLookBackDistance: number,
     minWordLength: number,
     minWordTriggerLength: number,
-    enableTabKeyForCompletionInsertion: boolean,
+    insertionKey: InsertionKey,
     wordInsertionMode: WordInsertionMode,
     latexProviderEnabled: boolean,
     fileScannerProviderEnabled: boolean,
@@ -24,7 +29,7 @@ export const DEFAULT_SETTINGS: CompletrSettings = {
     maxLookBackDistance: 50,
     minWordLength: 2,
     minWordTriggerLength: 3,
-    enableTabKeyForCompletionInsertion: false,
+    insertionKey: InsertionKey.ENTER,
     wordInsertionMode: WordInsertionMode.IGNORE_CASE_REPLACE,
     latexProviderEnabled: true,
     fileScannerProviderEnabled: true,
