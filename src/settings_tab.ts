@@ -258,8 +258,10 @@ export default class CompletrSettingsTab extends PluginSettingTab {
             return;
 
         this.isReloadingWords = true;
-        await WordList.loadFromFiles(this.app.vault, this.plugin.settings);
+        const count = await WordList.loadFromFiles(this.app.vault, this.plugin.settings);
         this.isReloadingWords = false;
+
+        new Notice(`Loaded ${count} words`);
     }
 
     private createEnabledSetting(propertyName: keyof CompletrSettings, desc: string, container: HTMLElement) {

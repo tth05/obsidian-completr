@@ -12,7 +12,7 @@ class WordListSuggestionProvider extends DictionaryProvider {
         return settings.wordListProviderEnabled;
     }
 
-    async loadFromFiles(vault: Vault, settings: CompletrSettings) {
+    async loadFromFiles(vault: Vault, settings: CompletrSettings): Promise<number> {
         this.wordMap.clear();
 
         const fileNames = await this.getRelativeFilePaths(vault);
@@ -51,8 +51,7 @@ class WordListSuggestionProvider extends DictionaryProvider {
             count += entry[1].length;
         }
 
-        if (count > 0)
-            new Notice("Loaded " + count + " words from " + BASE_FOLDER_PATH);
+        return count;
     }
 
     async deleteWordList(vault: Vault, path: string) {

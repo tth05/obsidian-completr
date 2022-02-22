@@ -129,7 +129,6 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
         let self = this as any;
         this.disableInsertionKey();
 
-        console.log("Set", key);
         this.insertionKeybindRegistration = self.scope.register([], key, (event: Event) => {
             self.suggestions.useSelectedItem(event);
             return false;
