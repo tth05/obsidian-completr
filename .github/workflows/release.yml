@@ -33,8 +33,7 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - Fixed normal Shift+Enter behavior not working correctly
-            - Fixed the "words loaded" notice showing on every startup
+            - Fixed duplicated entries being shown when using "Ignore-Case & Append" insertion mode
           draft: false
           prerelease: false
       - name: Upload main.js
