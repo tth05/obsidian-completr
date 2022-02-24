@@ -99,7 +99,7 @@ export default class CompletrPlugin extends Plugin {
         const isInsertionKey = event.key != this.settings.insertionKey;
 
         //Pass through enter while holding shift or tab. Allows going to the next line while the popup is open
-        if (event.shiftKey || isInsertionKey) {
+        if ((this._suggestionPopup as any).isOpen && (event.shiftKey || isInsertionKey)) {
             this._suggestionPopup.close();
             if (!placeholder) {
                 //Hack: Dispatch the event again to properly continue lists and other obsidian formatting features.
