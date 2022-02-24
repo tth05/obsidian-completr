@@ -96,10 +96,10 @@ export default class CompletrPlugin extends Plugin {
         const editor = view.editor;
         const placeholder = this.snippetManager.placeholderAtPos(editor.getCursor());
 
-        const isInsertionKey = event.key != this.settings.insertionKey;
+        const isPopupByPassKey = event.key != this.settings.insertionKey || event.shiftKey;
 
         //Prevents the popup from consuming these events when the normal behavior should be run
-        if ((this._suggestionPopup as any).isOpen && (event.shiftKey || isInsertionKey)) {
+        if ((this._suggestionPopup as any).isOpen && isPopupByPassKey) {
             this._suggestionPopup.close();
 
             //This removes the shift key value from the event when pressing shift+enter while using Enter as the

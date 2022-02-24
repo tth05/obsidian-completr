@@ -25,32 +25,27 @@ export abstract class DictionaryProvider implements SuggestionProvider {
             return [];
 
         //TODO: Rank those who match case higher
-        let result: string[] = [];
+        const result = new Set<string>();
         for (let el of list) {
-            result = [...result, ...filterIntoArray(el, s => {
-                const match = ignoreCase ? s.toLowerCase() : s;
-                return match.startsWith(query);
-            })];
+            filterMapIntoSet(result, el, s => {
+                    const match = ignoreCase ? s.toLowerCase() : s;
+                    return match.startsWith(query);
+                },
+                settings.wordInsertionMode === WordInsertionMode.IGNORE_CASE_APPEND ?
+                    //In append mode we combine the query with the suggestions
+                    (s => context.query + s.substring(query.length, s.length)) :
+                    (s => s)
+            );
         }
 
-        result = result.sort((a, b) => a.length - b.length);
-
-        //In append mode we combine the query with the suggestions
-        if (settings.wordInsertionMode === WordInsertionMode.IGNORE_CASE_APPEND) {
-            result = result.map(s => context.query + s.substring(query.length, s.length));
-        }
-
-        return result;
+        return [...result].sort((a, b) => a.length - b.length);
     }
 }
 
-function filterIntoArray<T>(iterable: Iterable<T>, predicate: (val: T) => boolean): T[] {
-    const result: T[] = [];
+function filterMapIntoSet<T>(set: Set<T>, iterable: Iterable<T>, predicate: (val: T) => boolean, map: (val: T) => T) {
     for (let val of iterable) {
         if (!predicate(val))
             continue;
-        result.push(val);
+        set.add(map(val));
     }
-
-    return result;
 }
