@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-completr",
-	"version": "2.5.0",
+	"version": "2.5.1",
 	"description": "This plugin provides advanced auto-completion capabilities for Obsidian",
 	"main": "main.js",
 	"scripts": {
@@ -15,7 +15,6 @@
 		"@typescript-eslint/eslint-plugin": "^5.2.0",
 		"@typescript-eslint/parser": "^5.2.0",
 		"builtin-modules": "^3.2.0",
-        "@codemirror/autocomplete": "^0.19.9",
         "@codemirror/view": "^0.19.37",
         "@codemirror/rangeset": "^0.19.6",
 		"esbuild": "0.13.12",

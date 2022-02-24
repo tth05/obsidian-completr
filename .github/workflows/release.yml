@@ -33,8 +33,8 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - Disabled line wrapping for long suggestions in the popup
-            - Properly implemented the option to switch between Tab and Enter for suggestion insertion
+            - Fixed normal Shift+Enter behavior not working correctly
+            - Fixed the "words loaded" notice showing on every startup
           draft: false
           prerelease: false
       - name: Upload main.js
