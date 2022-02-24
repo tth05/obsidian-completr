@@ -101,6 +101,11 @@ export default class CompletrPlugin extends Plugin {
         //Prevents the popup from consuming these events when the normal behavior should be run
         if ((this._suggestionPopup as any).isOpen && (event.shiftKey || isInsertionKey)) {
             this._suggestionPopup.close();
+
+            //This removes the shift key value from the event when pressing shift+enter while using Enter as the
+            // insertion key. The resulting event leads to more desirable behavior.
+            if (event.key === InsertionKey.ENTER && event.key === this.settings.insertionKey)
+                Object.defineProperty(event, "shiftKey", {value: false});
         }
 
         if (!placeholder)
