@@ -87,7 +87,7 @@ export default class CompletrPlugin extends Plugin {
     }
 
     private readonly handleKeydown = (event: KeyboardEvent, cm: EditorView) => {
-        if (!Object.values(InsertionKey).contains(event.key as any) || event.code === "completr")
+        if (!Object.values(InsertionKey).contains(event.key as any))
             return;
         const view = cm.state.field(editorViewField, false);
         if (!view)
@@ -98,24 +98,9 @@ export default class CompletrPlugin extends Plugin {
 
         const isInsertionKey = event.key != this.settings.insertionKey;
 
-        //Pass through enter while holding shift or tab. Allows going to the next line while the popup is open
+        //Prevents the popup from consuming these events when the normal behavior should be run
         if ((this._suggestionPopup as any).isOpen && (event.shiftKey || isInsertionKey)) {
             this._suggestionPopup.close();
-            if (!placeholder) {
-                //Hack: Dispatch the event again to properly continue lists and other obsidian formatting features.
-                let keyboardEvent = new KeyboardEvent(event.type, {
-                    key: event.key,
-                    altKey: event.altKey,
-                    //Shift enter does not seem to work very well
-                    shiftKey: event.key === InsertionKey.ENTER ? false : event.shiftKey,
-                    keyCode: event.keyCode,
-                    charCode: event.charCode,
-                    //Prevents stackoverflow of keydown events
-                    code: "completr"
-                });
-                cm.contentDOM.dispatchEvent(keyboardEvent);
-                event.preventDefault();
-            }
         }
 
         if (!placeholder)
