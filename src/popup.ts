@@ -71,7 +71,7 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
             }
         }
 
-        return suggestions;
+        return suggestions.length === 0 ? null : suggestions;
     }
 
     onTrigger(cursor: EditorPosition, editor: Editor, file: TFile): EditorSuggestTriggerInfo | null {
