@@ -68,10 +68,10 @@ export function isInLatexBlock(editor: Editor, pos: EditorPosition): boolean {
     let blockStartingLine = 0;
     let currentBlockType = BlockType.NONE;
 
-    for (let i = pos.line; i >= Math.max(0, pos.line - 1000); i--) {
-        const line = editor.getLine(i);
-        for (let j = pos.line == i ? pos.ch - 1 : line.length - 1; j >= 0; j--) {
-            if (line.charAt(j) !== '$')
+    for (let lineIndex = pos.line; lineIndex >= Math.max(0, pos.line - 1000); lineIndex--) {
+        const line = editor.getLine(lineIndex);
+        for (let j = pos.line == lineIndex ? pos.ch - 1 : line.length - 1; j >= 0; j--) {
+            if (line.charAt(j) !== '$' || line.charAt(Math.max(0, j - 1)) === '\\')
                 continue;
             let isDouble = j != 0 && line.charAt(j - 1) === "$";
             if (isDouble)
@@ -85,7 +85,7 @@ export function isInLatexBlock(editor: Editor, pos: EditorPosition): boolean {
             } else if (isDouble && currentBlockType === BlockType.DOUBLE) {
                 currentBlockType = BlockType.NONE;
             } else {
-                blockStartingLine = i;
+                blockStartingLine = lineIndex;
                 currentBlockType = isDouble ? BlockType.DOUBLE : BlockType.SINGLE;
             }
         }
@@ -93,7 +93,8 @@ export function isInLatexBlock(editor: Editor, pos: EditorPosition): boolean {
         //If the single block does not begin in the current line, then it is not closed meaning the cursor is inside
         // this block
         if (currentBlockType === BlockType.SINGLE)
-            return true;
+            //But we also check the line, because single $ blocks can't go across multiple lines
+            return lineIndex === pos.line;
     }
 
     return currentBlockType !== BlockType.NONE;
