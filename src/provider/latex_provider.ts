@@ -24,7 +24,7 @@ class LatexSuggestionProvider implements SuggestionProvider {
         let editor = context.editor;
 
         //Check if we're in a LaTeX context
-        if (!isInLatexBlock(editor, context.start))
+        if (!isInLatexBlock(editor, context.start, settings.latexTriggerInCodeBlocks))
             return [];
 
         const isSeparatorBackslash = context.separatorChar === "\\";

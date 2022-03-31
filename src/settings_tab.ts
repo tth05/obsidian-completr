@@ -106,6 +106,16 @@ export default class CompletrSettingsTab extends PluginSettingTab {
         this.createEnabledSetting("latexProviderEnabled", "Whether or not the latex provider is enabled", containerEl);
 
         new Setting(containerEl)
+            .setName("Trigger in code blocks")
+            .setDesc("Whether the LaTeX provider should trigger after dollar signs which are enclosed in code blocks (for example ```$\\fr```).")
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.latexTriggerInCodeBlocks)
+                .onChange(async val => {
+                    this.plugin.settings.latexTriggerInCodeBlocks = val;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
             .setName("Front matter provider")
             .addExtraButton(button => button
                 .setIcon("link")

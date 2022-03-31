@@ -58,44 +58,97 @@ export function isInFrontMatterBlock(editor: Editor, pos: EditorPosition): boole
     return false;
 }
 
-export function isInLatexBlock(editor: Editor, pos: EditorPosition): boolean {
-    const enum BlockType {
-        NONE,
-        SINGLE,
-        DOUBLE
+class BlockType {
+    public static DOLLAR_MULTI = new BlockType("$$", true);
+    public static DOLLAR_SINGLE = new BlockType("$", false, BlockType.DOLLAR_MULTI);
+    public static CODE_MULTI = new BlockType("```", true);
+    public static CODE_SINGLE = new BlockType("`", false, BlockType.CODE_MULTI);
+
+    static {
+        BlockType.DOLLAR_MULTI.otherType0 = BlockType.DOLLAR_SINGLE;
+        BlockType.CODE_MULTI.otherType0 = BlockType.CODE_SINGLE;
     }
 
-    let blockStartingLine = 0;
-    let currentBlockType = BlockType.NONE;
+    public static SINGLE_TYPES = [BlockType.DOLLAR_SINGLE, BlockType.CODE_SINGLE];
 
-    for (let lineIndex = pos.line; lineIndex >= Math.max(0, pos.line - 1000); lineIndex--) {
+    constructor(public readonly c: string, public readonly isMultiLine: boolean, private otherType0: BlockType = null) {
+    }
+
+    public get isDollarBlock(): boolean {
+        return this === BlockType.DOLLAR_SINGLE || this === BlockType.DOLLAR_MULTI;
+    }
+
+    public get isCodeBlock(): boolean {
+        return !this.isDollarBlock;
+    }
+
+    public get otherType(): BlockType {
+        return this.otherType0;
+    }
+}
+
+export function isInLatexBlock(editor: Editor, cursorPos: EditorPosition, triggerInCodeBlocks: boolean): boolean {
+    let blockTypeStack: { type: BlockType, line: number }[] = [];
+
+    for (let lineIndex = Math.max(0, cursorPos.line - 1000); lineIndex <= cursorPos.line; lineIndex++) {
         const line = editor.getLine(lineIndex);
-        for (let j = pos.line == lineIndex ? pos.ch - 1 : line.length - 1; j >= 0; j--) {
-            if (line.charAt(j) !== '$' || line.charAt(Math.max(0, j - 1)) === '\\')
+        for (let j = cursorPos.line == lineIndex ? cursorPos.ch - 1 : line.length - 1; j >= 0; j--) {
+            const currentChar = line.charAt(j);
+            let matchingBlockType = BlockType.SINGLE_TYPES.find((b) => b.c.charAt(0) === currentChar);
+            if (!matchingBlockType || line.charAt(Math.max(0, j - 1)) === '\\')
                 continue;
-            let isDouble = j != 0 && line.charAt(j - 1) === "$";
-            if (isDouble)
-                j--;
 
-            blockStartingLine = 0;
-            if (currentBlockType === BlockType.SINGLE && isDouble || currentBlockType === BlockType.DOUBLE && !isDouble) {
-                return true;
-            } else if (!isDouble && currentBlockType === BlockType.SINGLE) {
-                currentBlockType = BlockType.NONE;
-            } else if (isDouble && currentBlockType === BlockType.DOUBLE) {
-                currentBlockType = BlockType.NONE;
-            } else {
-                blockStartingLine = lineIndex;
-                currentBlockType = isDouble ? BlockType.DOUBLE : BlockType.SINGLE;
+            const multiTypeLength = matchingBlockType.otherType.c.length;
+            const isDouble = j + 1 >= multiTypeLength && substringMatches(line, matchingBlockType.otherType.c, j - multiTypeLength + 1);
+            if (isDouble) {
+                j -= multiTypeLength - 1;
+                matchingBlockType = matchingBlockType.otherType;
             }
-        }
 
-        //If the single block does not begin in the current line, then it is not closed meaning the cursor is inside
-        // this block
-        if (currentBlockType === BlockType.SINGLE)
-            //But we also check the line, because single $ blocks can't go across multiple lines
-            return lineIndex === pos.line;
+            blockTypeStack.push({type: matchingBlockType, line: lineIndex});
+        }
     }
 
-    return currentBlockType !== BlockType.NONE;
+    if (blockTypeStack.length < 1)
+        return false;
+
+    let currentIndex = 0;
+    while (true) {
+        if (currentIndex >= blockTypeStack.length)
+            return false;
+
+        const currentBlock = blockTypeStack[currentIndex];
+        const otherBlockIndex = findIndex(blockTypeStack, ({type}) => type === currentBlock.type, currentIndex + 1);
+
+        if (otherBlockIndex === -1) {
+            if (!triggerInCodeBlocks && currentBlock.type.isCodeBlock)
+                return false;
+            if (currentBlock.type === BlockType.DOLLAR_SINGLE && currentBlock.line !== cursorPos.line) {
+                currentIndex++;
+                continue;
+            }
+
+            return true;
+        } else {
+            currentIndex = otherBlockIndex + 1;
+        }
+    }
+}
+
+function findIndex<T>(arr: T[], predicate: (element: T) => boolean, fromIndex: number): number {
+    for (let i = fromIndex; i < arr.length; i++) {
+        if (predicate(arr[i]))
+            return i;
+    }
+
+    return -1;
+}
+
+function substringMatches(str: string, toMatch: string, from: number): boolean {
+    for (let i = from; i < from + toMatch.length - 1; i++) {
+        if (str.charAt(i) !== toMatch.charAt(i - from))
+            return false;
+    }
+
+    return true;
 }
