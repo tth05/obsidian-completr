@@ -33,7 +33,8 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - Fixed collision with slash commands plugin
+            - LaTeX provider now correctly ignores escaped dollar signs
+            - New option for the LaTeX provider to prevent it from triggering inside of code blocks
           draft: false
           prerelease: false
       - name: Upload main.js
