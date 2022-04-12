@@ -19,12 +19,19 @@ This plugin provides advanced auto-completion functionality for obsidian.
     - Scans the current file or your whole vault to find new words which can then be suggested
 
 ## Installation
-
+Make sure to check out the [hotkeys](#configuring-hotkeys) section after installation to further configure the plugin.
 ### Community plugin list
 Browse the community plugins list and search for `Completr`.
 ### Manually
 - Download `main.js, styles.css` and `manifest.json` from a release of your choice
 - Copy the three files to your vault `VaultFolder/.obsidian/plugins/obsidian-completr/`
+
+## Configuring hotkeys
+- All hotkeys are changeable from the hotkeys settings page
+- The "bypass" hotkeys are useful to run actions which pretend that the popup isn't open.
+    - If for example your insertion key is `Enter`, you couldn't press enter to go to the next line while the popup is open. This is where you could use the bypass key.
+    - This also allows for other modifiers to be used, for example pressing `Tab` might require holding `Shift` to move backwards. Only modifiers which are not used in the bypass keybinding will be forwarded.
+- If you want to change a hotkey without using any modifier, you need to use a workaround which can be found [here](https://forum.obsidian.md/t/be-able-of-using-the-function-keys-f1-f12-to-perform-functions/15748/7) or [here](https://forum.obsidian.md/t/function-keys-cant-be-bound-as-hotkeys-without-modifiers/26956/4), as Obsidian currently does not support this.
 
 ## Example usage
 #### Latex snippets

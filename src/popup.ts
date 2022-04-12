@@ -12,7 +12,7 @@ import {
     TFile
 } from "obsidian";
 import SnippetManager from "./snippet_manager";
-import {CompletrSettings, InsertionKey} from "./settings";
+import {CompletrSettings} from "./settings";
 import {FrontMatter} from "./provider/front_matter_provider";
 import {matchWordBackwards} from "./editor_helpers";
 
@@ -28,8 +28,6 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
     private characterRegex: string;
     private compiledCharacterRegex: RegExp;
 
-    private insertionKeybindRegistration: Object;
-
     private readonly snippetManager: SnippetManager;
     private readonly settings: CompletrSettings;
     private readonly disableSnippets: boolean;
@@ -40,12 +38,9 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
         this.settings = settings;
         this.snippetManager = snippetManager;
 
-        //Remove default enter key registration
+        //Remove default key registrations
         let self = this as any;
-        self.scope.unregister(self.scope.keys.find((k: any) => k.key === "Enter"));
-
-        //Set custom key registration
-        this.setInsertionKey(settings.insertionKey);
+        self.scope.keys = [];
     }
 
     getSuggestions(
@@ -121,25 +116,22 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
         this.justClosed = true;
     }
 
+    selectNextItem(dir: SelectionDirection) {
+        const self = this as any;
+        self.suggestions.setSelectedItem(self.suggestions.selectedItem + dir, true);
+    }
+
+    applySelectedItem() {
+        const self = this as any;
+        self.suggestions.useSelectedItem();
+    }
+
+    isVisible(): boolean {
+        return (this as any).isOpen;
+    }
+
     preventNextTrigger() {
         this.justClosed = true;
-    }
-
-    setInsertionKey(key: InsertionKey) {
-        let self = this as any;
-        this.disableInsertionKey();
-
-        this.insertionKeybindRegistration = self.scope.register([], key, (event: Event) => {
-            self.suggestions.useSelectedItem(event);
-            return false;
-        });
-    }
-
-    private disableInsertionKey() {
-        let self = this as any;
-
-        if (this.insertionKeybindRegistration)
-            self.scope.unregister(this.insertionKeybindRegistration);
     }
 
     private getCharacterRegex(): RegExp {
@@ -148,4 +140,10 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
 
         return this.compiledCharacterRegex;
     }
+
+}
+
+export enum SelectionDirection {
+    NEXT = 1,
+    PREVIOUS = -1
 }

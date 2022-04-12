@@ -2,7 +2,7 @@ import {App, ButtonComponent, Modal, Notice, PluginSettingTab, Setting} from "ob
 import CompletrPlugin from "./main";
 import {FileScanner} from "./provider/scanner_provider";
 import {WordList} from "./provider/word_list_provider";
-import {CompletrSettings, InsertionKey, WordInsertionMode} from "./settings";
+import {CompletrSettings, WordInsertionMode} from "./settings";
 
 export default class CompletrSettingsTab extends PluginSettingTab {
 
@@ -65,21 +65,6 @@ export default class CompletrSettingsTab extends PluginSettingTab {
                             return;
 
                         this.plugin.settings.minWordTriggerLength = parseInt(val);
-                        await this.plugin.saveSettings();
-                    });
-            });
-
-        new Setting(containerEl)
-            .setName("Insertion key")
-            .setDesc("The key you want to use to insert suggestions while the popup is open.")
-            .addDropdown(dropdown => {
-                dropdown
-                    .addOption(InsertionKey.ENTER, InsertionKey.ENTER)
-                    .addOption(InsertionKey.TAB, InsertionKey.TAB)
-                    .setValue(this.plugin.settings.insertionKey)
-                    .onChange(async val => {
-                        this.plugin.settings.insertionKey = val as InsertionKey;
-                        this.plugin.suggestionPopup.setInsertionKey(val as InsertionKey);
                         await this.plugin.saveSettings();
                     });
             });

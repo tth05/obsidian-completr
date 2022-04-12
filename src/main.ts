@@ -1,7 +1,7 @@
-import {EditorPosition, editorViewField, Plugin, TFile,} from "obsidian";
+import {EditorPosition, editorViewField, KeymapContext, MarkdownView, Plugin, TFile,} from "obsidian";
 import SnippetManager from "./snippet_manager";
-import SuggestionPopup from "./popup";
-import {CompletrSettings, DEFAULT_SETTINGS, InsertionKey} from "./settings";
+import SuggestionPopup, {SelectionDirection} from "./popup";
+import {CompletrSettings, DEFAULT_SETTINGS} from "./settings";
 import {WordList} from "./provider/word_list_provider";
 import {FileScanner} from "./provider/scanner_provider";
 import CompletrSettingsTab from "./settings_tab";
@@ -31,13 +31,63 @@ export default class CompletrPlugin extends Plugin {
         this.app.workspace.onLayoutReady(() => FrontMatter.loadYAMLKeyCompletions(this.app.metadataCache, this.app.vault.getMarkdownFiles()));
 
         this.registerEditorExtension(markerStateField);
-
         this.registerEditorExtension(EditorView.updateListener.of(new CursorActivityListener(this.snippetManager, this._suggestionPopup).listener));
-        this.registerEditorExtension(Prec.highest(EditorView.domEventHandlers({
-            "keydown": this.handleKeydown
-        })));
 
         this.addSettingTab(new CompletrSettingsTab(this.app, this));
+
+        this.setupCommands();
+
+        if ((this.app.vault as any).config?.legacyEditor) {
+            console.log("Completr: Without Live Preview enabled, most features of Completr will not work properly!");
+        }
+    }
+
+    private setupCommands() {
+        //This replaces the default handler for commands. This is needed because the default handler always consumes
+        // the event if the command exists.
+        const app = this.app as any;
+        app.scope.keys = [];
+
+        const gwIsMatch = (hotkey: any, context: KeymapContext, id: string): boolean => {
+            //Copied from original isMatch function, modified to not require exactly the same modifiers
+            const modifiers = hotkey.modifiers, key = hotkey.key;
+            if (modifiers !== null && (id.contains("completr") ? !context.modifiers.contains(modifiers) : modifiers !== context.modifiers))
+                return false;
+            return (!key || (key === context.vkey || !(!context.key || key.toLowerCase() !== context.key.toLowerCase())))
+        }
+        this.app.scope.register(null, null, (e: KeyboardEvent, t: KeymapContext) => {
+            const hotkeyManager = app.hotkeyManager;
+            hotkeyManager.bake();
+            for (let bakedHotkeys = hotkeyManager.bakedHotkeys, bakedIds = hotkeyManager.bakedIds, r = 0; r < bakedHotkeys.length; r++) {
+                const hotkey = bakedHotkeys[r];
+                const id = bakedIds[r];
+                if (gwIsMatch(hotkey, t, id)) {
+                    const command = app.commands.findCommand(id);
+
+                    //HACK: Hide our commands when to popup is not visible to allow the keybinds to execute their default action.
+                    if (command.isVisible && !command.isVisible()) {
+                        continue;
+                    } else if (id.contains("completr-bypass")) {
+                        this._suggestionPopup.close();
+
+                        const validMods = t.modifiers.replace(new RegExp(`${hotkey.modifiers},*`), "").split(",");
+                        //Sends the event again, only keeping the modifiers which didn't activate this command
+                        let event = new KeyboardEvent("keydown", {
+                            key: hotkeyManager.defaultKeys[id][0].key,
+                            ctrlKey: validMods.contains("Ctrl"),
+                            shiftKey: validMods.contains("Shift"),
+                            altKey: validMods.contains("Alt"),
+                            metaKey: validMods.contains("Meta")
+                        });
+                        e.target.dispatchEvent(event);
+                        return false;
+                    }
+
+                    if (app.commands.executeCommandById(id))
+                        return false
+                }
+            }
+        });
 
         this.addCommand({
             id: 'completr-open-suggestion-popup',
@@ -51,12 +101,133 @@ export default class CompletrPlugin extends Plugin {
             editorCallback: (editor) => {
                 //This is the same function that is called by obsidian when you type a character
                 (this._suggestionPopup as any).trigger(editor, this.app.workspace.getActiveFile(), true);
-            }
+            },
         });
+        this.addCommand({
+            id: 'completr-select-next-suggestion',
+            name: 'Select next suggestion',
+            hotkeys: [
+                {
+                    key: "ArrowDown",
+                    modifiers: []
+                }
+            ],
+            editorCallback: (editor) => {
+                this.suggestionPopup.selectNextItem(SelectionDirection.NEXT);
+            },
+            // @ts-ignore
+            isVisible: () => this._suggestionPopup.isVisible(),
+        });
+        this.addCommand({
+            id: 'completr-select-previous-suggestion',
+            name: 'Select previous suggestion',
+            hotkeys: [
+                {
+                    key: "ArrowUp",
+                    modifiers: []
+                }
+            ],
+            editorCallback: (editor) => {
+                this.suggestionPopup.selectNextItem(SelectionDirection.PREVIOUS);
+            },
+            // @ts-ignore
+            isVisible: () => this._suggestionPopup.isVisible(),
+        });
+        this.addCommand({
+            id: 'completr-insert-selected-suggestion',
+            name: 'Insert selected suggestion',
+            hotkeys: [
+                {
+                    key: "Enter",
+                    modifiers: []
+                }
+            ],
+            editorCallback: (editor) => {
+                this.suggestionPopup.applySelectedItem();
+            },
+            // @ts-ignore
+            isVisible: () => this._suggestionPopup.isVisible(),
+        });
+        this.addCommand({
+            id: 'completr-bypass-enter-key',
+            name: 'Bypass the popup and press Enter',
+            hotkeys: [
+                {
+                    key: "Enter",
+                    modifiers: ["Ctrl"]
+                }
+            ],
+            editorCallback: (editor) => {
+            },
+            // @ts-ignore
+            isVisible: () => this._suggestionPopup.isVisible(),
+        });
+        this.addCommand({
+            id: 'completr-bypass-tab-key',
+            name: 'Bypass the popup and press Tab',
+            hotkeys: [
+                {
+                    key: "Tab",
+                    modifiers: ["Ctrl"]
+                }
+            ],
+            editorCallback: (editor) => {
+            },
+            // @ts-ignore
+            isVisible: () => this._suggestionPopup.isVisible(),
+        });
+        this.addCommand({
+            id: 'completr-close-suggestion-popup',
+            name: 'Close suggestion popup',
+            hotkeys: [
+                {
+                    key: "Escape",
+                    modifiers: []
+                }
+            ],
+            editorCallback: (editor) => {
+                this.suggestionPopup.close();
+            },
+            // @ts-ignore
+            isVisible: () => this._suggestionPopup.isVisible(),
+        });
+        this.addCommand({
+            id: 'completr-jump-to-next-snippet-placeholder',
+            name: 'Jump to next snippet placeholder',
+            hotkeys: [
+                {
+                    key: "Enter",
+                    modifiers: []
+                }
+            ],
+            editorCheckCallback: (checking, editor, view) => {
+                if (checking)
+                    return true;
 
-        if ((this.app.vault as any).config?.legacyEditor) {
-            console.log("Completr: Without Live Preview enabled, most features of Completr will not work properly!");
-        }
+                const placeholder = this.snippetManager.placeholderAtPos(editor.getCursor());
+                //Sanity check
+                if (!placeholder)
+                    return;
+                const placeholderEnd = posFromIndex(editorToCodeMirrorState(placeholder.editor).doc, placeholder.marker.to);
+
+                if (!this.snippetManager.consumeAndGotoNextMarker(editor)) {
+                    editor.setSelections([{
+                        anchor: {
+                            ...placeholderEnd,
+                            ch: Math.min(editor.getLine(placeholderEnd.line).length, placeholderEnd.ch + 1)
+                        }
+                    }]);
+                }
+            },
+            // @ts-ignore
+            isVisible: () => {
+                const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+                if (!view)
+                    return false;
+                const placeholder = this.snippetManager.placeholderAtPos(view.editor.getCursor());
+                return placeholder != null;
+            },
+        });
     }
 
     async onunload() {
@@ -84,43 +255,6 @@ export default class CompletrPlugin extends Plugin {
             return;
 
         FileScanner.scanFile(this.settings, file, true);
-    }
-
-    private readonly handleKeydown = (event: KeyboardEvent, cm: EditorView) => {
-        if (!Object.values(InsertionKey).contains(event.key as any))
-            return;
-        const view = cm.state.field(editorViewField, false);
-        if (!view)
-            return;
-
-        const editor = view.editor;
-        const placeholder = this.snippetManager.placeholderAtPos(editor.getCursor());
-
-        const isPopupByPassKey = event.key != this.settings.insertionKey || event.shiftKey;
-
-        //Prevents the popup from consuming these events when the normal behavior should be run
-        if ((this._suggestionPopup as any).isOpen && isPopupByPassKey) {
-            this._suggestionPopup.close();
-
-            //This removes the shift key value from the event when pressing shift+enter while using Enter as the
-            // insertion key. The resulting event leads to more desirable behavior.
-            if (event.key === InsertionKey.ENTER && event.key === this.settings.insertionKey)
-                Object.defineProperty(event, "shiftKey", {value: false});
-        }
-
-        if (!placeholder)
-            return;
-        const placeholderEnd = posFromIndex(editorToCodeMirrorState(placeholder.editor).doc, placeholder.marker.to);
-
-        event.preventDefault();
-        if (!this.snippetManager.consumeAndGotoNextMarker(editor)) {
-            editor.setSelections([{
-                anchor: {
-                    ...placeholderEnd,
-                    ch: Math.min(editor.getLine(placeholderEnd.line).length, placeholderEnd.ch + 1)
-                }
-            }]);
-        }
     }
 }
 
