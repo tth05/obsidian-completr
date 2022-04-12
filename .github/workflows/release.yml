@@ -33,8 +33,7 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - LaTeX provider now correctly ignores escaped dollar signs
-            - New option for the LaTeX provider to prevent it from triggering inside of code blocks
+            - Hotkey customization
           draft: false
           prerelease: false
       - name: Upload main.js
