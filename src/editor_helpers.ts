@@ -123,7 +123,7 @@ export function isInLatexBlock(editor: Editor, cursorPos: EditorPosition, trigge
         if (otherBlockIndex === -1) {
             if (!triggerInCodeBlocks && currentBlock.type.isCodeBlock)
                 return false;
-            if (currentBlock.type === BlockType.DOLLAR_SINGLE && currentBlock.line !== cursorPos.line) {
+            if (currentBlock.type.isCodeBlock || (currentBlock.type === BlockType.DOLLAR_SINGLE && currentBlock.line !== cursorPos.line)) {
                 currentIndex++;
                 continue;
             }
