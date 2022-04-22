@@ -19,12 +19,15 @@ This plugin provides advanced auto-completion functionality for obsidian.
     - Scans the current file or your whole vault to find new words which can then be suggested
 
 ## Installation
-Make sure to check out the [hotkeys](#configuring-hotkeys) section after installation to further configure the plugin.
 ### Community plugin list
 Browse the community plugins list and search for `Completr`.
 ### Manually
 - Download `main.js, styles.css` and `manifest.json` from a release of your choice
 - Copy the three files to your vault `VaultFolder/.obsidian/plugins/obsidian-completr/`
+
+### After installation
+1. Restart obsidian to ensure internal hooks can get registered properly
+2. Check out the [hotkeys](#configuring-hotkeys) section to further configure the plugin
 
 ## Configuring hotkeys
 - All hotkeys are changeable from the hotkeys settings page
