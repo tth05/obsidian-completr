@@ -55,7 +55,7 @@ export default class CompletrSettingsTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName("Minimum word trigger length")
-            .setDesc("The minimum length a word has to be, to trigger suggestions. This value is ignored by the LaTeX provider.")
+            .setDesc("The minimum length a word has to be, to trigger suggestions. The LaTeX provider has its own separate setting.")
             .addText(text => {
                 text.inputEl.type = "number";
                 text
@@ -99,6 +99,32 @@ export default class CompletrSettingsTab extends PluginSettingTab {
                     this.plugin.settings.latexTriggerInCodeBlocks = val;
                     await this.plugin.saveSettings();
                 }));
+
+        new Setting(containerEl)
+            .setName("Ignore case")
+            .setDesc("Whether the LaTeX provider should ignore the casing of the typed text. If so, the input 'MaThbb' could suggest 'mathbb'.")
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.latexIgnoreCase)
+                .onChange(async val => {
+                    this.plugin.settings.latexIgnoreCase = val;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName("Minimum word trigger length")
+            .setDesc("The minimum length a query has to be, to trigger suggestions.")
+            .addText(text => {
+                text.inputEl.type = "number";
+                text
+                    .setValue(this.plugin.settings.latexMinWordTriggerLength + "")
+                    .onChange(async val => {
+                        if (!val || val.length < 1)
+                            return;
+
+                        this.plugin.settings.latexMinWordTriggerLength = parseInt(val);
+                        await this.plugin.saveSettings();
+                    });
+            });
 
         new Setting(containerEl)
             .setName("Front matter provider")

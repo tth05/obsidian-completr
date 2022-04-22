@@ -3,8 +3,9 @@ import {CompletrSettings} from "../settings";
 
 export type Suggestion = string | { displayName: string, replacement: string, overrideStart?: EditorPosition };
 
-export function getSuggestionDisplayName(suggestion: Suggestion): string {
-    return typeof (suggestion) === "string" ? suggestion : suggestion.displayName;
+export function getSuggestionDisplayName(suggestion: Suggestion, lowerCase: boolean = false): string {
+    const res = typeof (suggestion) === "string" ? suggestion : suggestion.displayName;
+    return lowerCase ? res.toLowerCase() : res;
 }
 
 export function getSuggestionReplacement(suggestion: Suggestion): string {
@@ -18,5 +19,6 @@ export interface SuggestionContext extends EditorSuggestContext {
 
 export interface SuggestionProvider {
     blocksAllOtherProviders?: boolean,
+
     getSuggestions(context: SuggestionContext, settings: CompletrSettings): Suggestion[],
 }

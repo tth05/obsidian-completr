@@ -18,7 +18,7 @@ function substringUntil(str: string, delimiter: string): string {
 
 class LatexSuggestionProvider implements SuggestionProvider {
     getSuggestions(context: SuggestionContext, settings: CompletrSettings): Suggestion[] {
-        if (!settings.latexProviderEnabled || !context.query)
+        if (!settings.latexProviderEnabled || !context.query || context.query.length < settings.latexMinWordTriggerLength)
             return [];
 
         let editor = context.editor;
@@ -27,15 +27,16 @@ class LatexSuggestionProvider implements SuggestionProvider {
         if (!isInLatexBlock(editor, context.start, settings.latexTriggerInCodeBlocks))
             return [];
 
+        const query = settings.latexIgnoreCase ? context.query.toLowerCase() : context.query;
         const isSeparatorBackslash = context.separatorChar === "\\";
-        return LATEX_COMMANDS.filter((s) => getSuggestionDisplayName(s).contains(context.query))
+
+        return LATEX_COMMANDS.filter((s) => getSuggestionDisplayName(s, settings.latexIgnoreCase).contains(query))
             .map((s) => {
                 const replacement = getSuggestionReplacement(s);
-                const displayName = getSuggestionDisplayName(s);
                 return ({
-                    displayName: displayName,
+                    displayName: getSuggestionDisplayName(s),
                     replacement: isSeparatorBackslash ? replacement.substring(1) : replacement,
-                    priority: displayName.indexOf(context.query),
+                    priority: getSuggestionDisplayName(s, settings.latexIgnoreCase).indexOf(query),
                 });
             })
             .sort((a, b) => {
