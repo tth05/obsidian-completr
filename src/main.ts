@@ -49,9 +49,11 @@ export default class CompletrPlugin extends Plugin {
         app.scope.keys = [];
 
         const gwIsMatch = (hotkey: any, context: KeymapContext, id: string): boolean => {
-            //Copied from original isMatch function, modified to not require exactly the same modifiers
+            //Copied from original isMatch function, modified to not require exactly the same modifiers for
+            // completr-bypass commands. This allows triggering for example Ctrl+Enter even when
+            // pressing Ctrl+Shift+Enter. The additional modifier is then passed to the editor.
             const modifiers = hotkey.modifiers, key = hotkey.key;
-            if (modifiers !== null && (id.contains("completr") ? !context.modifiers.contains(modifiers) : modifiers !== context.modifiers))
+            if (modifiers !== null && (id.contains("completr-bypass") ? !context.modifiers.contains(modifiers) : modifiers !== context.modifiers))
                 return false;
             return (!key || (key === context.vkey || !(!context.key || key.toLowerCase() !== context.key.toLowerCase())))
         }
@@ -200,10 +202,7 @@ export default class CompletrPlugin extends Plugin {
                     modifiers: []
                 }
             ],
-            editorCheckCallback: (checking, editor, view) => {
-                if (checking)
-                    return true;
-
+            editorCallback: (editor, view) => {
                 const placeholder = this.snippetManager.placeholderAtPos(editor.getCursor());
                 //Sanity check
                 if (!placeholder)
