@@ -486,6 +486,7 @@ const LATEX_COMMANDS: Suggestion[] = [
     "\\lgroup",
     "\\lhd",
     "\\lim",
+    "\\lim_{#}",
     "\\liminf",
     "\\limsup",
     "\\ll",
