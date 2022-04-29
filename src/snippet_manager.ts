@@ -114,6 +114,9 @@ export default class SnippetManager {
         const placeholder = this.currentPlaceholderReferences[0];
 
         const newRange = SnippetManager.rangeFromPlaceholder(placeholder);
+        if (!newRange)
+            return false;
+
         if (newRange.from.ch <= oldRange.from.ch && newRange.to.ch >= oldRange.to.ch) {
             //If the old placeholder is inside of the next one, we just move the cursor
             editor.setCursor({...newRange.to});

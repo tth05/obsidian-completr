@@ -99,7 +99,12 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
     selectSuggestion(value: Suggestion, evt: MouseEvent | KeyboardEvent): void {
         const replacement = getSuggestionReplacement(value);
         const start = typeof value !== "string" && value.overrideStart ? value.overrideStart : this.context.start;
-        this.context.editor.replaceRange(replacement, start, this.context.end);
+
+        const endPos = this.context.end;
+        this.context.editor.replaceRange(replacement, start, {
+            ...endPos,
+            ch: Math.min(endPos.ch, this.context.editor.getLine(endPos.line).length)
+        });
 
         //Check if suggestion is a snippet
         if (replacement.contains("#") || replacement.contains("~")) {

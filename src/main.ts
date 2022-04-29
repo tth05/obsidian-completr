@@ -48,10 +48,17 @@ export default class CompletrPlugin extends Plugin {
         const app = this.app as any;
         app.scope.keys = [];
 
-        const gwIsMatch = (hotkey: any, context: KeymapContext, id: string): boolean => {
+        const isHotkeyMatch = (hotkey: any, context: KeymapContext, id: string): boolean => {
             //Copied from original isMatch function, modified to not require exactly the same modifiers for
             // completr-bypass commands. This allows triggering for example Ctrl+Enter even when
             // pressing Ctrl+Shift+Enter. The additional modifier is then passed to the editor.
+
+            /* Original isMatch function:
+            var n = e.modifiers
+                , i = e.key;
+            return (null === n || n === t.modifiers) && (!i || (i === t.vkey || !(!t.key || i.toLowerCase() !== t.key.toLowerCase())))
+            */
+
             const modifiers = hotkey.modifiers, key = hotkey.key;
             if (modifiers !== null && (id.contains("completr-bypass") ? !context.modifiers.contains(modifiers) : modifiers !== context.modifiers))
                 return false;
@@ -63,11 +70,11 @@ export default class CompletrPlugin extends Plugin {
             for (let bakedHotkeys = hotkeyManager.bakedHotkeys, bakedIds = hotkeyManager.bakedIds, r = 0; r < bakedHotkeys.length; r++) {
                 const hotkey = bakedHotkeys[r];
                 const id = bakedIds[r];
-                if (gwIsMatch(hotkey, t, id)) {
+                if (isHotkeyMatch(hotkey, t, id)) {
                     const command = app.commands.findCommand(id);
 
                     //HACK: Hide our commands when to popup is not visible to allow the keybinds to execute their default action.
-                    if (command.isVisible && !command.isVisible()) {
+                    if (!command || (command.isVisible && !command.isVisible())) {
                         continue;
                     } else if (id.contains("completr-bypass")) {
                         this._suggestionPopup.close();
