@@ -33,7 +33,6 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - Two new options for the LaTeX provider
             - Bug fixes
           draft: false
           prerelease: false
