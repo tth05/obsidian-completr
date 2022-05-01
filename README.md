@@ -2,7 +2,7 @@
 [![](https://img.shields.io/github/v/release/tth05/obsidian-completr?style=flat-square)](https://github.com/tth05/obsidian-completr/releases)
 ![](https://img.shields.io/github/downloads/tth05/obsidian-completr/total?style=flat-square)
 
-This plugin provides advanced auto-completion functionality for obsidian.
+This plugin provides advanced auto-completion functionality for obsidian. Legacy editor not supported.
 
 ## Features
 - Latex support
