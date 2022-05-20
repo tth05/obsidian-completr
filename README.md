@@ -27,9 +27,18 @@ Browse the community plugins list and search for `Completr`.
 
 ### After installation
 1. Restart obsidian to ensure internal hooks can get registered properly
-2. Check out the [hotkeys](#configuring-hotkeys) section to further configure the plugin
+2. Check out the [hotkeys](#hotkeys) section to further configure the plugin
 
-## Configuring hotkeys
+## Configuration
+### LaTeX commands
+- All default LaTeX commands can be found in the `.obsidian/plugins/obsidian-completr/latex_commands.json` file
+- You can add, remove or modify commands by editing this file
+- Replacement syntax
+  - `#` is a placeholder for snippets
+  - `~` marks the cursor position to jump to. This cannot be on the same line as a placeholder
+  - `\n` is a newline
+- If the file contains incorrect syntax, a notice will pop up and the console will contain a more detailed error message
+### Hotkeys
 - All hotkeys are changeable from the hotkeys settings page
 - The "bypass" hotkeys are useful to run actions which pretend that the popup isn't open.
     - If for example your insertion key is `Enter`, you couldn't press enter to go to the next line while the popup is open. This is where you could use the bypass key.
