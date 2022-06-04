@@ -64,7 +64,12 @@ class LatexSuggestionProvider implements SuggestionProvider {
 
         const data = await vault.adapter.read(LATEX_COMMANDS_PATH);
         try {
-            this.loadedCommands = JSON.parse(data);
+            const commands: Suggestion[] = JSON.parse(data);
+            const invalidCommand = commands.find(c => getSuggestionDisplayName(c).includes("\n"));
+            if (invalidCommand)
+                throw new Error("Display name cannot contain a newline: " + getSuggestionDisplayName(invalidCommand));
+
+            this.loadedCommands = commands;
         } catch (e) {
             console.log("Completr latex commands parse error:", e.message);
             new Notice("Failed to parse latex commands file " + LATEX_COMMANDS_PATH + ". Using default commands.", 3000);
