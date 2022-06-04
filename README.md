@@ -30,6 +30,9 @@ Browse the community plugins list and search for `Completr`.
 2. Check out the [hotkeys](#hotkeys) section to further configure the plugin
 
 ## Configuration
+### Blacklist
+- You can blacklist any suggestion by adding it to the `.obsidian/plugins/obsidian-completr/blacklisted_suggestions.txt` file
+- Alternatively, you can use the hotkey to blacklist the currently selected suggestion (Default `Shift+D`)
 ### LaTeX commands
 - All default LaTeX commands can be found in the `.obsidian/plugins/obsidian-completr/latex_commands.json` file
 - You can add, remove or modify commands by editing this file
