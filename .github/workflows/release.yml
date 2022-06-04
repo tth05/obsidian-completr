@@ -33,7 +33,7 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - LaTeX commands can now be fully customized
+            - New blacklist feature
           draft: false
           prerelease: false
       - name: Upload main.js
