@@ -8,6 +8,7 @@ import {
 import {CompletrSettings} from "../settings";
 import {isInLatexBlock} from "../editor_helpers";
 import {Notice, Vault} from "obsidian";
+import {SuggestionBlacklist} from "./blacklist";
 
 function substringUntil(str: string, delimiter: string): string {
     let index = str.indexOf(delimiter);
@@ -59,22 +60,23 @@ class LatexSuggestionProvider implements SuggestionProvider {
             const defaultCommands = generateDefaultLatexCommands();
             await vault.adapter.write(LATEX_COMMANDS_PATH, JSON.stringify(defaultCommands, null, 2));
             this.loadedCommands = defaultCommands;
-            return;
+        } else {
+            const data = await vault.adapter.read(LATEX_COMMANDS_PATH);
+            try {
+                const commands: Suggestion[] = JSON.parse(data);
+                const invalidCommand = commands.find(c => getSuggestionDisplayName(c).includes("\n"));
+                if (invalidCommand)
+                    throw new Error("Display name cannot contain a newline: " + getSuggestionDisplayName(invalidCommand));
+
+                this.loadedCommands = commands;
+            } catch (e) {
+                console.log("Completr latex commands parse error:", e.message);
+                new Notice("Failed to parse latex commands file " + LATEX_COMMANDS_PATH + ". Using default commands.", 3000);
+                this.loadedCommands = generateDefaultLatexCommands();
+            }
         }
 
-        const data = await vault.adapter.read(LATEX_COMMANDS_PATH);
-        try {
-            const commands: Suggestion[] = JSON.parse(data);
-            const invalidCommand = commands.find(c => getSuggestionDisplayName(c).includes("\n"));
-            if (invalidCommand)
-                throw new Error("Display name cannot contain a newline: " + getSuggestionDisplayName(invalidCommand));
-
-            this.loadedCommands = commands;
-        } catch (e) {
-            console.log("Completr latex commands parse error:", e.message);
-            new Notice("Failed to parse latex commands file " + LATEX_COMMANDS_PATH + ". Using default commands.", 3000);
-            this.loadedCommands = generateDefaultLatexCommands();
-        }
+        this.loadedCommands = SuggestionBlacklist.filter(this.loadedCommands);
     }
 }
 

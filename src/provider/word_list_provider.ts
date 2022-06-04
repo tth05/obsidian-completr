@@ -1,8 +1,11 @@
 import {CompletrSettings} from "../settings";
 import {DictionaryProvider} from "./dictionary_provider";
 import {Notice, Vault} from "obsidian";
+import {SuggestionBlacklist} from "./blacklist";
+import {Suggestion} from "./provider";
 
 const BASE_FOLDER_PATH = ".obsidian/plugins/obsidian-completr/wordLists";
+const NEW_LINE_REGEX = /\r?\n/;
 
 class WordListSuggestionProvider extends DictionaryProvider {
 
@@ -29,7 +32,7 @@ class WordListSuggestionProvider extends DictionaryProvider {
             }
 
             //Each line is a word
-            const lines = data.split("\n");
+            const lines = data.split(NEW_LINE_REGEX);
             for (let line of lines) {
                 if (line === "" || line.length < settings.minWordLength)
                     continue;
@@ -47,8 +50,9 @@ class WordListSuggestionProvider extends DictionaryProvider {
         let count = 0;
         //Sort by length
         for (let entry of this.wordMap.entries()) {
-            entry[1] = entry[1].sort((a, b) => a.length - b.length);
-            count += entry[1].length;
+            const newValue = SuggestionBlacklist.filter(entry[1].sort((a, b) => a.length - b.length) as Suggestion[]) as string[];
+            this.wordMap.set(entry[0], newValue);
+            count += newValue.length;
         }
 
         return count;

@@ -15,6 +15,7 @@ import SnippetManager from "./snippet_manager";
 import {CompletrSettings} from "./settings";
 import {FrontMatter} from "./provider/front_matter_provider";
 import {matchWordBackwards} from "./editor_helpers";
+import {SuggestionBlacklist} from "./provider/blacklist";
 
 const PROVIDERS: SuggestionProvider[] = [FrontMatter, Latex, FileScanner, WordList];
 
@@ -66,7 +67,7 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
             }
         }
 
-        return suggestions.length === 0 ? null : suggestions;
+        return suggestions.length === 0 ? null : suggestions.filter(s => !SuggestionBlacklist.has(s));
     }
 
     onTrigger(cursor: EditorPosition, editor: Editor, file: TFile): EditorSuggestTriggerInfo | null {
@@ -124,6 +125,11 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
     selectNextItem(dir: SelectionDirection) {
         const self = this as any;
         self.suggestions.setSelectedItem(self.suggestions.selectedItem + dir, true);
+    }
+
+    getSelectedItem(): Suggestion {
+        const self = this as any;
+        return self.suggestions.values[self.suggestions.selectedItem];
     }
 
     applySelectedItem() {

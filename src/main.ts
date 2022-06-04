@@ -11,6 +11,7 @@ import {editorToCodeMirrorState, posFromIndex} from "./editor_helpers";
 import {markerStateField} from "./marker_state_field";
 import {FrontMatter} from "./provider/front_matter_provider";
 import {Latex} from "./provider/latex_provider";
+import {SuggestionBlacklist} from "./provider/blacklist";
 
 export default class CompletrPlugin extends Plugin {
 
@@ -187,6 +188,23 @@ export default class CompletrPlugin extends Plugin {
             isVisible: () => this._suggestionPopup.isVisible(),
         });
         this.addCommand({
+            id: 'completr-blacklist-current-word',
+            name: 'Add the currently selected word to the blacklist',
+            hotkeys: [
+                {
+                    key: "D",
+                    modifiers: ["Shift"]
+                }
+            ],
+            editorCallback: (editor) => {
+                SuggestionBlacklist.add(this._suggestionPopup.getSelectedItem());
+                SuggestionBlacklist.saveData(this.app.vault);
+                (this._suggestionPopup as any).trigger(editor, this.app.workspace.getActiveFile(), true);
+            },
+            // @ts-ignore
+            isVisible: () => this._suggestionPopup.isVisible(),
+        });
+        this.addCommand({
             id: 'completr-close-suggestion-popup',
             name: 'Close suggestion popup',
             hotkeys: [
@@ -245,9 +263,11 @@ export default class CompletrPlugin extends Plugin {
     async loadSettings() {
         this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
 
-        WordList.loadFromFiles(this.app.vault, this.settings);
-        FileScanner.loadData(this.app.vault);
-        Latex.loadCommands(this.app.vault);
+        SuggestionBlacklist.loadData(this.app.vault).then(() => {
+            WordList.loadFromFiles(this.app.vault, this.settings);
+            FileScanner.loadData(this.app.vault);
+            Latex.loadCommands(this.app.vault);
+        });
     }
 
     get suggestionPopup() {

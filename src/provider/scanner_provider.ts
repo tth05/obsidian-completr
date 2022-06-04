@@ -1,8 +1,11 @@
 import {TFile, Vault} from "obsidian";
 import {CompletrSettings} from "../settings";
 import {DictionaryProvider} from "./dictionary_provider";
+import {SuggestionBlacklist} from "./blacklist";
+import {Suggestion} from "./provider";
 
-const SCANNED_WORDS_PATH = ".obsidian/plugins/obsidian-completr/scanned_words.txt"
+const SCANNED_WORDS_PATH = ".obsidian/plugins/obsidian-completr/scanned_words.txt";
+const NEW_LINE_REGEX = /\r?\n/;
 
 class ScannerSuggestionProvider extends DictionaryProvider {
 
@@ -49,7 +52,7 @@ class ScannerSuggestionProvider extends DictionaryProvider {
         if (!(await vault.adapter.exists(SCANNED_WORDS_PATH)))
             return
 
-        const contents = (await vault.adapter.read(SCANNED_WORDS_PATH)).split("\n");
+        const contents = (await vault.adapter.read(SCANNED_WORDS_PATH)).split(NEW_LINE_REGEX);
         for (let word of contents) {
             this.addWord(word);
         }
@@ -61,7 +64,7 @@ class ScannerSuggestionProvider extends DictionaryProvider {
     }
 
     private addWord(word: string) {
-        if (!word)
+        if (!word || SuggestionBlacklist.has(word as Suggestion))
             return;
 
         let list = this.wordMap.get(word.charAt(0));

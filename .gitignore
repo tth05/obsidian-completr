@@ -18,5 +18,6 @@ main.js
 # obsidian
 data.json
 scanned_words.txt
+blacklisted_suggestions.txt
 latex_commands.json
 wordLists
