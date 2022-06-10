@@ -33,7 +33,7 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - LaTeX provider now ignores the front matter
+            - Fix regression from last update
           draft: false
           prerelease: false
       - name: Upload main.js
