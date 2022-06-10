@@ -119,7 +119,7 @@ export function isInLatexBlock(editor: Editor, cursorPos: EditorPosition, trigge
     const blockTypeStack: { type: BlockType, line: number }[] = [];
 
     for (let lineIndex = Math.max(0, cursorPos.line - 1000); lineIndex <= cursorPos.line; lineIndex++) {
-        if (lineIndex >= frontMatterBounds.startLine || lineIndex <= frontMatterBounds.endLine)
+        if (lineIndex >= frontMatterBounds.startLine && lineIndex <= frontMatterBounds.endLine)
             continue;
 
         const line = editor.getLine(lineIndex);
