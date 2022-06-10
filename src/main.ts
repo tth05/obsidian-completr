@@ -6,7 +6,6 @@ import {WordList} from "./provider/word_list_provider";
 import {FileScanner} from "./provider/scanner_provider";
 import CompletrSettingsTab from "./settings_tab";
 import {EditorView, ViewUpdate} from "@codemirror/view";
-import {Prec} from "@codemirror/state";
 import {editorToCodeMirrorState, posFromIndex} from "./editor_helpers";
 import {markerStateField} from "./marker_state_field";
 import {FrontMatter} from "./provider/front_matter_provider";

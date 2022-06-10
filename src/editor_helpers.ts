@@ -47,15 +47,42 @@ export function matchWordBackwards(
 }
 
 export function isInFrontMatterBlock(editor: Editor, pos: EditorPosition): boolean {
-    if (editor.getLine(0) !== "---" || editor.getLine(1) === "---" || pos.line === 0)
+    if (pos.line === 0)
         return false;
 
-    for (let i = 2; i < Math.max(30, editor.lastLine()); i++) {
-        if (editor.getLine(i) === "---")
-            return pos.line < i;
+    const bounds = getFrontMatterBounds(editor);
+    if (!bounds)
+        return false;
+
+    return pos.line > bounds.startLine && pos.line < bounds.endLine;
+}
+
+function getFrontMatterBounds(editor: Editor): { startLine: number, endLine: number } {
+    let startLine = -1;
+    // Find start within first 5 lines
+    for (let i = 0; i < Math.min(5, editor.lastLine()); i++) {
+        if (editor.getLine(i) !== "---")
+            continue;
+        startLine = i;
+        break;
     }
 
-    return false;
+    if (startLine === -1)
+        return null;
+
+    let endLine = -1;
+    // Find end within next 50 lines
+    for (let i = startLine + 1; i < Math.min(50, editor.lastLine()); i++) {
+        if (editor.getLine(i) !== "---")
+            continue;
+        endLine = i;
+        break;
+    }
+
+    if (endLine === -1)
+        return null;
+
+    return {startLine, endLine};
 }
 
 class BlockType {
@@ -88,9 +115,13 @@ class BlockType {
 }
 
 export function isInLatexBlock(editor: Editor, cursorPos: EditorPosition, triggerInCodeBlocks: boolean): boolean {
-    let blockTypeStack: { type: BlockType, line: number }[] = [];
+    const frontMatterBounds = getFrontMatterBounds(editor) ?? {startLine: -1, endLine: -1};
+    const blockTypeStack: { type: BlockType, line: number }[] = [];
 
     for (let lineIndex = Math.max(0, cursorPos.line - 1000); lineIndex <= cursorPos.line; lineIndex++) {
+        if (lineIndex >= frontMatterBounds.startLine || lineIndex <= frontMatterBounds.endLine)
+            continue;
+
         const line = editor.getLine(lineIndex);
         for (let j = cursorPos.line == lineIndex ? cursorPos.ch - 1 : line.length - 1; j >= 0; j--) {
             const currentChar = line.charAt(j);
