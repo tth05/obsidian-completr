@@ -33,7 +33,7 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - New blacklist feature
+            - LaTeX provider now ignores the front matter
           draft: false
           prerelease: false
       - name: Upload main.js
