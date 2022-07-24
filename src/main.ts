@@ -74,8 +74,11 @@ export default class CompletrPlugin extends Plugin {
                 if (isHotkeyMatch(hotkey, t, id)) {
                     const command = app.commands.findCommand(id);
 
-                    //HACK: Hide our commands when to popup is not visible to allow the keybinds to execute their default action.
-                    if (!command || (command.isVisible && !command.isVisible())) {
+                    // Condition taken from original function
+                    if (!command || (e.repeat && !command.repeatable)) {
+                        continue;
+                    } else if (command.isVisible && !command.isVisible()) {
+                        //HACK: Hide our commands when to popup is not visible to allow the keybinds to execute their default action.
                         continue;
                     } else if (id.contains("completr-bypass")) {
                         this._suggestionPopup.close();
