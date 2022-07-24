@@ -1,5 +1,6 @@
 import {CompletrSettings, WordInsertionMode} from "../settings";
 import {SuggestionContext, SuggestionProvider} from "./provider";
+import {getStaticValue} from "@typescript-eslint/experimental-utils/dist/ast-utils";
 
 export abstract class DictionaryProvider implements SuggestionProvider {
 
@@ -12,7 +13,12 @@ export abstract class DictionaryProvider implements SuggestionProvider {
             return [];
 
         const ignoreCase = settings.wordInsertionMode != WordInsertionMode.MATCH_CASE_REPLACE;
-        const query = ignoreCase ? context.query.toLowerCase() : context.query;
+
+        let query = ignoreCase ? context.query.toLowerCase() : context.query;
+        const ignoreDiacritics = settings.ignoreDiacriticsWhenFiltering;
+        if (ignoreDiacritics)
+            query = removeDiacritics(query);
+
         const firstChar = query.charAt(0);
 
         //This is an array of arrays to avoid unnecessarily creating a new huge array containing all elements of both arrays.
@@ -21,6 +27,16 @@ export abstract class DictionaryProvider implements SuggestionProvider {
             :
             [this.wordMap.get(firstChar) ?? []];
 
+        if (ignoreDiacritics) {
+            // This additionally adds all words that start with a diacritic, which the two maps above might not cover.
+            for (let [key, value] of this.wordMap.entries()) {
+                let keyFirstChar = ignoreCase ? key.charAt(0).toLowerCase() : key.charAt(0);
+
+                if (removeDiacritics(keyFirstChar) === firstChar)
+                    list.push(value);
+            }
+        }
+
         if (!list || list.length < 1)
             return [];
 
@@ -28,7 +44,9 @@ export abstract class DictionaryProvider implements SuggestionProvider {
         const result = new Set<string>();
         for (let el of list) {
             filterMapIntoSet(result, el, s => {
-                    const match = ignoreCase ? s.toLowerCase() : s;
+                    let match = ignoreCase ? s.toLowerCase() : s;
+                    if (ignoreDiacritics)
+                        match = removeDiacritics(match);
                     return match.startsWith(query);
                 },
                 settings.wordInsertionMode === WordInsertionMode.IGNORE_CASE_APPEND ?
@@ -40,6 +58,12 @@ export abstract class DictionaryProvider implements SuggestionProvider {
 
         return [...result].sort((a, b) => a.length - b.length);
     }
+}
+
+const DIACRITICS_REGEX = /[\u0300-\u036f]/g
+
+function removeDiacritics(str: string): string {
+    return str.normalize("NFD").replace(DIACRITICS_REGEX, "");
 }
 
 function filterMapIntoSet<T>(set: Set<T>, iterable: Iterable<T>, predicate: (val: T) => boolean, map: (val: T) => T) {

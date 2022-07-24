@@ -85,6 +85,16 @@ export default class CompletrSettingsTab extends PluginSettingTab {
             );
 
         new Setting(containerEl)
+            .setName("Ignore diacritics when filtering")
+            .setDesc("When enabled, the query 'Hello' can suggest 'Hèllò', meaning diacritics will be ignored when filtering the suggestions.")
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.ignoreDiacriticsWhenFiltering)
+                .onChange(async val => {
+                    this.plugin.settings.ignoreDiacriticsWhenFiltering = val;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
             .setName("Latex provider")
             .setHeading();
 
