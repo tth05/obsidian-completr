@@ -33,7 +33,7 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - Fix regression from last update
+            - Fix front matter provider not working in an empty file
           draft: false
           prerelease: false
       - name: Upload main.js
