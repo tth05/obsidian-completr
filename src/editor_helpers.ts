@@ -1,6 +1,5 @@
-import {Text} from "@codemirror/text";
 import {Editor, EditorPosition} from "obsidian";
-import {EditorState} from "@codemirror/state";
+import {EditorState, Text} from "@codemirror/state";
 import {EditorView} from "@codemirror/view";
 
 export function posFromIndex(doc: Text, offset: number): EditorPosition {

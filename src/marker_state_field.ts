@@ -1,5 +1,4 @@
-import {StateEffect, StateField} from "@codemirror/state";
-import {Range, RangeSet} from "@codemirror/rangeset";
+import {Range, RangeSet, StateEffect, StateField} from "@codemirror/state";
 import {Decoration, EditorView} from "@codemirror/view";
 
 export const addMark = StateEffect.define<Range<Decoration>>(), clearMarks = StateEffect.define(),

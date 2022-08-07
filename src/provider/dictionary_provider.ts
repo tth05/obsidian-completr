@@ -1,6 +1,5 @@
 import {CompletrSettings, WordInsertionMode} from "../settings";
 import {SuggestionContext, SuggestionProvider} from "./provider";
-import {getStaticValue} from "@typescript-eslint/experimental-utils/dist/ast-utils";
 
 export abstract class DictionaryProvider implements SuggestionProvider {
 
