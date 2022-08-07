@@ -71,7 +71,7 @@ function getFrontMatterBounds(editor: Editor): { startLine: number, endLine: num
 
     let endLine = -1;
     // Find end within next 50 lines
-    for (let i = startLine + 1; i < Math.min(50, editor.lastLine()); i++) {
+    for (let i = startLine + 1; i <= Math.min(50, editor.lastLine()); i++) {
         if (editor.getLine(i) !== "---")
             continue;
         endLine = i;
