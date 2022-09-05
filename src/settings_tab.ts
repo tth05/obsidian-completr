@@ -72,7 +72,7 @@ export default class CompletrSettingsTab extends PluginSettingTab {
         new Setting(containerEl)
             .setName("Word insertion mode")
             .setDesc("The insertion mode that is used. Ignore-case would suggest 'Hello' if the typed text is 'hello', match-case would not. " +
-                "Append would complete 'Hell' with 'Hello' while replace would complete it with 'hello' instead (if only 'hello' was a known word).")
+                "Append would complete 'Hell' with 'Hello' while replace would complete it with 'hello' instead (if only 'hello' was a known word). Only used by the file scanner and word list provider.")
             .addDropdown(dropdown => dropdown
                 .addOption(WordInsertionMode.IGNORE_CASE_REPLACE, WordInsertionMode.IGNORE_CASE_REPLACE)
                 .addOption(WordInsertionMode.IGNORE_CASE_APPEND, WordInsertionMode.IGNORE_CASE_APPEND)
@@ -86,7 +86,7 @@ export default class CompletrSettingsTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName("Ignore diacritics when filtering")
-            .setDesc("When enabled, the query 'Hello' can suggest 'Hèllò', meaning diacritics will be ignored when filtering the suggestions.")
+            .setDesc("When enabled, the query 'Hello' can suggest 'Hèllò', meaning diacritics will be ignored when filtering the suggestions. Only used by the file scanner and word list provider.")
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.ignoreDiacriticsWhenFiltering)
                 .onChange(async val => {
