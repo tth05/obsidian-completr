@@ -33,7 +33,7 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - Fix front matter provider not working in an empty file
+            - New ignore case option for front matter provider
           draft: false
           prerelease: false
       - name: Upload main.js
