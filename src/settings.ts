@@ -20,6 +20,7 @@ export interface CompletrSettings {
     wordListProviderEnabled: boolean,
     frontMatterProviderEnabled: boolean,
     frontMatterTagAppendSuffix: boolean,
+    frontMatterIgnoreCase: boolean
 }
 
 export const DEFAULT_SETTINGS: CompletrSettings = {
@@ -37,5 +38,6 @@ export const DEFAULT_SETTINGS: CompletrSettings = {
     fileScannerScanCurrent: true,
     wordListProviderEnabled: true,
     frontMatterProviderEnabled: true,
-    frontMatterTagAppendSuffix: true
+    frontMatterTagAppendSuffix: true,
+    frontMatterIgnoreCase: true
 }

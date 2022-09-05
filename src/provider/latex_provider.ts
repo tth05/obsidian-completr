@@ -6,7 +6,7 @@ import {
     SuggestionProvider
 } from "./provider";
 import {CompletrSettings} from "../settings";
-import {isInLatexBlock} from "../editor_helpers";
+import {isInLatexBlock, maybeLowerCase} from "../editor_helpers";
 import {Notice, Vault} from "obsidian";
 import {SuggestionBlacklist} from "./blacklist";
 
@@ -34,7 +34,7 @@ class LatexSuggestionProvider implements SuggestionProvider {
         if (!isInLatexBlock(editor, context.start, settings.latexTriggerInCodeBlocks))
             return [];
 
-        const query = settings.latexIgnoreCase ? context.query.toLowerCase() : context.query;
+        const query = maybeLowerCase(context.query, settings.latexIgnoreCase);
         const isSeparatorBackslash = context.separatorChar === "\\";
 
         return this.loadedCommands.filter((s) => getSuggestionDisplayName(s, settings.latexIgnoreCase).contains(query))

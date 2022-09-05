@@ -147,6 +147,16 @@ export default class CompletrSettingsTab extends PluginSettingTab {
         this.createEnabledSetting("frontMatterProviderEnabled", "Whether the front matter provider is enabled", containerEl);
 
         new Setting(containerEl)
+            .setName("Ignore case")
+            .setDesc("Whether the Front matter provider should ignore the casing of the typed text. If so, the input 'MaThbb' could suggest 'mathbb'.")
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.frontMatterIgnoreCase)
+                .onChange(async val => {
+                    this.plugin.settings.frontMatterIgnoreCase = val;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
             .setName("Add suffix to tag completion")
             .setDesc("Whether each completed tag should be suffixed with a comma or a newline (when typing in a multi-line list). Allows faster insertion of multiple tags.")
             .addToggle(toggle => toggle

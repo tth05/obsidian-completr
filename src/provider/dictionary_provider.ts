@@ -1,5 +1,6 @@
 import {CompletrSettings, WordInsertionMode} from "../settings";
 import {SuggestionContext, SuggestionProvider} from "./provider";
+import {maybeLowerCase} from "../editor_helpers";
 
 export abstract class DictionaryProvider implements SuggestionProvider {
 
@@ -13,7 +14,7 @@ export abstract class DictionaryProvider implements SuggestionProvider {
 
         const ignoreCase = settings.wordInsertionMode != WordInsertionMode.MATCH_CASE_REPLACE;
 
-        let query = ignoreCase ? context.query.toLowerCase() : context.query;
+        let query = maybeLowerCase(context.query, ignoreCase);
         const ignoreDiacritics = settings.ignoreDiacriticsWhenFiltering;
         if (ignoreDiacritics)
             query = removeDiacritics(query);
@@ -29,7 +30,7 @@ export abstract class DictionaryProvider implements SuggestionProvider {
         if (ignoreDiacritics) {
             // This additionally adds all words that start with a diacritic, which the two maps above might not cover.
             for (let [key, value] of this.wordMap.entries()) {
-                let keyFirstChar = ignoreCase ? key.charAt(0).toLowerCase() : key.charAt(0);
+                let keyFirstChar = maybeLowerCase(key.charAt(0), ignoreCase);
 
                 if (removeDiacritics(keyFirstChar) === firstChar)
                     list.push(value);
@@ -43,7 +44,7 @@ export abstract class DictionaryProvider implements SuggestionProvider {
         const result = new Set<string>();
         for (let el of list) {
             filterMapIntoSet(result, el, s => {
-                    let match = ignoreCase ? s.toLowerCase() : s;
+                    let match = maybeLowerCase(s, ignoreCase);
                     if (ignoreDiacritics)
                         match = removeDiacritics(match);
                     return match.startsWith(query);

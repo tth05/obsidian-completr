@@ -21,10 +21,14 @@ export function editorToCodeMirrorView(editor: Editor): EditorView {
     return (editor as any).cm;
 }
 
+export function maybeLowerCase(str: string, lowerCase: boolean): string {
+    return lowerCase ? str.toLowerCase() : str;
+}
+
 export function matchWordBackwards(
     editor: Editor,
     cursor: EditorPosition,
-    charValidator: (char: string) => boolean,
+    charPredicate: (char: string) => boolean,
     maxLookBackDistance: number = 50
 ): { query: string, separatorChar: string } {
     let query = "", separatorChar = null;
@@ -34,7 +38,7 @@ export function matchWordBackwards(
     //Find word in front of cursor
     for (let i = cursor.ch - 1; i >= lookBackEnd; i--) {
         const prevChar = editor.getRange({...cursor, ch: i}, {...cursor, ch: i + 1});
-        if (!charValidator(prevChar)) {
+        if (!charPredicate(prevChar)) {
             separatorChar = prevChar;
             break;
         }
