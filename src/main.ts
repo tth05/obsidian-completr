@@ -125,6 +125,7 @@ export default class CompletrPlugin extends Plugin {
                     modifiers: []
                 }
             ],
+            repeatable: true,
             editorCallback: (editor) => {
                 this.suggestionPopup.selectNextItem(SelectionDirection.NEXT);
             },
@@ -140,6 +141,7 @@ export default class CompletrPlugin extends Plugin {
                     modifiers: []
                 }
             ],
+            repeatable: true,
             editorCallback: (editor) => {
                 this.suggestionPopup.selectNextItem(SelectionDirection.PREVIOUS);
             },
