@@ -33,7 +33,7 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - New ignore case option for front matter provider
+            - Bug fixes
           draft: false
           prerelease: false
       - name: Upload main.js
