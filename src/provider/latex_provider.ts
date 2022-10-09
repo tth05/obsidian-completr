@@ -6,7 +6,7 @@ import {
     SuggestionProvider
 } from "./provider";
 import {CompletrSettings} from "../settings";
-import {isInLatexBlock, maybeLowerCase} from "../editor_helpers";
+import {BlockType, getLatexBlockType, maybeLowerCase} from "../editor_helpers";
 import {Notice, Vault} from "obsidian";
 import {SuggestionBlacklist} from "./blacklist";
 
@@ -31,7 +31,9 @@ class LatexSuggestionProvider implements SuggestionProvider {
         let editor = context.editor;
 
         //Check if we're in a LaTeX context
-        if (!isInLatexBlock(editor, context.start, settings.latexTriggerInCodeBlocks))
+        const latexBlockType = getLatexBlockType(editor, context.start, settings.latexTriggerInCodeBlocks);
+        const isSingleBlock = latexBlockType === BlockType.DOLLAR_SINGLE;
+        if (!latexBlockType)
             return [];
 
         const query = maybeLowerCase(context.query, settings.latexIgnoreCase);
@@ -39,10 +41,13 @@ class LatexSuggestionProvider implements SuggestionProvider {
 
         return this.loadedCommands.filter((s) => getSuggestionDisplayName(s, settings.latexIgnoreCase).contains(query))
             .map((s) => {
-                const replacement = getSuggestionReplacement(s);
+                let replacement = getSuggestionReplacement(s);
+                replacement = isSeparatorBackslash ? replacement.substring(1) : replacement;
+                replacement = isSingleBlock ? replacement.replace(/\n/g, "") : replacement;
+
                 return ({
                     displayName: getSuggestionDisplayName(s),
-                    replacement: isSeparatorBackslash ? replacement.substring(1) : replacement,
+                    replacement: replacement,
                     priority: getSuggestionDisplayName(s, settings.latexIgnoreCase).indexOf(query),
                 });
             })

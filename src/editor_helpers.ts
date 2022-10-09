@@ -88,7 +88,7 @@ function getFrontMatterBounds(editor: Editor): { startLine: number, endLine: num
     return {startLine, endLine};
 }
 
-class BlockType {
+export class BlockType {
     public static DOLLAR_MULTI = new BlockType("$$", true);
     public static DOLLAR_SINGLE = new BlockType("$", false, BlockType.DOLLAR_MULTI);
     public static CODE_MULTI = new BlockType("```", true);
@@ -117,7 +117,7 @@ class BlockType {
     }
 }
 
-export function isInLatexBlock(editor: Editor, cursorPos: EditorPosition, triggerInCodeBlocks: boolean): boolean {
+export function getLatexBlockType(editor: Editor, cursorPos: EditorPosition, triggerInCodeBlocks: boolean): BlockType | null {
     const frontMatterBounds = getFrontMatterBounds(editor) ?? {startLine: -1, endLine: -1};
     const blockTypeStack: { type: BlockType, line: number }[] = [];
 
@@ -144,25 +144,25 @@ export function isInLatexBlock(editor: Editor, cursorPos: EditorPosition, trigge
     }
 
     if (blockTypeStack.length < 1)
-        return false;
+        return null;
 
     let currentIndex = 0;
     while (true) {
         if (currentIndex >= blockTypeStack.length)
-            return false;
+            return null;
 
         const currentBlock = blockTypeStack[currentIndex];
         const otherBlockIndex = findIndex(blockTypeStack, ({type}) => type === currentBlock.type, currentIndex + 1);
 
         if (otherBlockIndex === -1) {
             if (!triggerInCodeBlocks && currentBlock.type.isCodeBlock)
-                return false;
+                return null;
             if (currentBlock.type.isCodeBlock || (currentBlock.type === BlockType.DOLLAR_SINGLE && currentBlock.line !== cursorPos.line)) {
                 currentIndex++;
                 continue;
             }
 
-            return true;
+            return currentBlock.type;
         } else {
             currentIndex = otherBlockIndex + 1;
         }
