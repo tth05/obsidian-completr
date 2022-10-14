@@ -124,7 +124,9 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
 
     selectNextItem(dir: SelectionDirection) {
         const self = this as any;
-        self.suggestions.setSelectedItem(self.suggestions.selectedItem + dir, true);
+        // HACK: The second parameter has to be an instance of KeyboardEvent to force scrolling the selected item into
+        // view
+        self.suggestions.setSelectedItem(self.suggestions.selectedItem + dir, new KeyboardEvent("keydown"));
     }
 
     getSelectedItem(): Suggestion {
