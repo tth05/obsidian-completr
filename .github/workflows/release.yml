@@ -33,7 +33,7 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - Fixes for obsidian 1.0.0
+            - The "Open suggestion popup" command is now invisible when the popup is already open
           draft: false
           prerelease: false
       - name: Upload main.js
