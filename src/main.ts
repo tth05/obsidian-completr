@@ -115,6 +115,8 @@ export default class CompletrPlugin extends Plugin {
                 //This is the same function that is called by obsidian when you type a character
                 (this._suggestionPopup as any).trigger(editor, this.app.workspace.getActiveFile(), true);
             },
+            // @ts-ignore
+            isVisible: () => !this._suggestionPopup.isVisible()
         });
         this.addCommand({
             id: 'completr-select-next-suggestion',
@@ -283,7 +285,7 @@ export default class CompletrPlugin extends Plugin {
     }
 
     private readonly onFileOpened = (file: TFile) => {
-        if (!this.settings.fileScannerScanCurrent || !file)
+        if (!this.settings.fileScannerProviderEnabled || !this.settings.fileScannerScanCurrent || !file)
             return;
 
         FileScanner.scanFile(this.settings, file, true);
