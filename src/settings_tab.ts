@@ -3,6 +3,8 @@ import CompletrPlugin from "./main";
 import {FileScanner} from "./provider/scanner_provider";
 import {WordList} from "./provider/word_list_provider";
 import {CompletrSettings, WordInsertionMode} from "./settings";
+import {TextDecoder} from "util";
+import {detect} from "jschardet";
 
 export default class CompletrSettingsTab extends PluginSettingTab {
 
@@ -232,15 +234,23 @@ export default class CompletrSettingsTab extends PluginSettingTab {
             let changed = false;
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
-                const text = await file.text();
-                const success = await WordList.importWordList(this.app.vault, file.name, text);
-                changed ||= success;
 
-                if (!success)
-                    new Notice("Unable to import " + file.name + " because it already exists!");
+                try {
+                    const buf = await file.arrayBuffer();
+                    const encoding = detect(Buffer.from(buf.slice(0, 1024))).encoding;
+                    const text = new TextDecoder(encoding).decode(buf);
+                    const success = await WordList.importWordList(this.app.vault, file.name, text);
+                    changed ||= success;
+
+                    if (!success)
+                        new Notice("Unable to import " + file.name + " because it already exists!");
+                } catch (e) {
+                    console.error(e);
+                    new Notice("Error while importing " + file.name);
+                }
             }
 
-            //Only refresh if something was added
+            // Only refresh if something was added
             if (!changed)
                 return;
 
