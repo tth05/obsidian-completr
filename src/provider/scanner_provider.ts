@@ -64,7 +64,7 @@ class ScannerSuggestionProvider extends DictionaryProvider {
     }
 
     private addWord(word: string) {
-        if (!word || SuggestionBlacklist.has(word as Suggestion))
+        if (!word || SuggestionBlacklist.hasText(word))
             return;
 
         let list = this.wordMap.get(word.charAt(0));

@@ -50,7 +50,7 @@ class WordListSuggestionProvider extends DictionaryProvider {
         let count = 0;
         //Sort by length
         for (let entry of this.wordMap.entries()) {
-            const newValue = SuggestionBlacklist.filter(entry[1].sort((a, b) => a.length - b.length) as Suggestion[]) as string[];
+            const newValue = SuggestionBlacklist.filterText(entry[1].sort((a, b) => a.length - b.length));
             this.wordMap.set(entry[0], newValue);
             count += newValue.length;
         }

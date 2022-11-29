@@ -1,18 +1,18 @@
-import {getSuggestionDisplayName, Suggestion, SuggestionContext, SuggestionProvider} from "./provider";
+import {Suggestion, SuggestionContext, SuggestionProvider} from "./provider";
 import {CompletrSettings} from "../settings";
 import {CachedMetadata, Editor, getAllTags, MetadataCache, TFile} from "obsidian";
 import {isInFrontMatterBlock, matchWordBackwards, maybeLowerCase} from "../editor_helpers";
 
-const BASE_SUGGESTION: Suggestion = {
-    displayName: "front-matter",
-    replacement: "---\n~\n---",
-    overrideStart: {line: 0, ch: 0}
-};
+const BASE_SUGGESTION = new Suggestion(
+    "front-matter",
+    "---\n~\n---",
+    {line: 0, ch: 0}
+);
 
-const PUBLISH_SUGGESTION: Suggestion = {
-    displayName: "publish: #",
-    replacement: "publish: ~"
-};
+const PUBLISH_SUGGESTION = new Suggestion(
+    "publish: #",
+    "publish: ~"
+);
 
 function findTagCompletionType(keyInfo: YAMLKeyInfo, editor: Editor, currentLineIndex: number, currentLine: string, ignoreCase: boolean): "inline" | "multiline" | "none" {
     const key = maybeLowerCase(keyInfo.key, ignoreCase);
@@ -110,26 +110,26 @@ class FrontMatterSuggestionProvider implements SuggestionProvider {
         if (context.start.ch === 0) {
             const suggestions: Suggestion[] = this.getPossibleCompletions().flatMap(i => {
                 if (!i.isList) {
-                    return [{
-                        displayName: i.key + ": #",
-                        replacement: i.key + ": ~"
-                    }];
+                    return [new Suggestion(
+                        i.key + ": #",
+                        i.key + ": ~"
+                    )];
                 }
 
                 return [
-                    {
-                        displayName: i.key + ": [#]",
-                        replacement: i.key + ": [~]"
-                    },
-                    {
-                        displayName: i.key + ": \\...",
-                        replacement: i.key + ":\n- ~"
-                    }
+                    new Suggestion(
+                        i.key + ": [#]",
+                        i.key + ": [~]"
+                    ),
+                    new Suggestion(
+                        i.key + ": \\...",
+                        i.key + ":\n- ~"
+                    )
                 ];
             })
             suggestions.push(PUBLISH_SUGGESTION);
             return suggestions.filter((snippet) => {
-                const displayName = getSuggestionDisplayName(snippet, ignoreCase);
+                const displayName = snippet.getDisplayNameLowerCase(ignoreCase);
                 const key = displayName.substring(0, displayName.indexOf(":"));
                 return key.startsWith(query);
             });
@@ -159,11 +159,11 @@ class FrontMatterSuggestionProvider implements SuggestionProvider {
             settings.maxLookBackDistance
         ).query, ignoreCase);
 
-        return [...key.completions].filter(tag => maybeLowerCase(tag, ignoreCase).startsWith(customQuery)).map(tag => ({
-            displayName: tag,
-            replacement: tag + (settings.frontMatterTagAppendSuffix && key.isList ? (type === "inline" ? ", " : "\n- ") : ""),
-            overrideStart: {...context.end, ch: context.end.ch - customQuery.length}
-        })).sort((a, b) => a.displayName.length - b.displayName.length);
+        return [...key.completions].filter(tag => maybeLowerCase(tag, ignoreCase).startsWith(customQuery)).map(tag => (new Suggestion(
+            tag,
+            tag + (settings.frontMatterTagAppendSuffix && key.isList ? (type === "inline" ? ", " : "\n- ") : ""),
+            {...context.end, ch: context.end.ch - customQuery.length}
+        ))).sort((a, b) => a.displayName.length - b.displayName.length);
     }
 
     loadYAMLKeyCompletions(cache: MetadataCache, files: TFile[]) {
@@ -222,8 +222,8 @@ class FrontMatterSuggestionProvider implements SuggestionProvider {
     }
 
     private static getPublishSuggestions(query: string) {
-        const possibilities = ["true", "false"];
-        const partialMatches = possibilities.filter(val => val.startsWith(query) && val !== query);
+        const possibilities = [Suggestion.fromString("true"), Suggestion.fromString("false")];
+        const partialMatches = possibilities.filter(val => val.displayName.startsWith(query) && val.displayName !== query);
         if (partialMatches.length > 0)
             return partialMatches;
         else if (query === "true" || query === "false")

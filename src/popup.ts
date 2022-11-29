@@ -1,4 +1,4 @@
-import {getSuggestionDisplayName, getSuggestionReplacement, Suggestion, SuggestionProvider} from "./provider/provider";
+import {Suggestion, SuggestionProvider} from "./provider/provider";
 import {Latex} from "./provider/latex_provider";
 import {WordList} from "./provider/word_list_provider";
 import {FileScanner} from "./provider/scanner_provider";
@@ -57,16 +57,24 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
 
             if (provider.blocksAllOtherProviders && suggestions.length > 0) {
                 suggestions.forEach((suggestion) => {
-                    if (typeof suggestion === "string" || !suggestion.overrideStart)
+                    if (!suggestion.overrideStart)
                         return;
 
-                    //Fixes popup position
+                    // Fixes popup position
                     this.context.start = suggestion.overrideStart;
                 });
                 break;
             }
         }
 
+        const seen = new Set<string>();
+        suggestions = suggestions.filter((suggestion) => {
+            if (seen.has(suggestion.displayName))
+                return false;
+
+            seen.add(suggestion.displayName);
+            return true;
+        });
         return suggestions.length === 0 ? null : suggestions.filter(s => !SuggestionBlacklist.has(s));
     }
 
@@ -94,11 +102,11 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
 
     renderSuggestion(value: Suggestion, el: HTMLElement): void {
         el.addClass("completr-suggestion-item");
-        el.setText(getSuggestionDisplayName(value));
+        el.setText(value.displayName);
     }
 
     selectSuggestion(value: Suggestion, evt: MouseEvent | KeyboardEvent): void {
-        const replacement = getSuggestionReplacement(value);
+        const replacement = value.replacement;
         const start = typeof value !== "string" && value.overrideStart ? value.overrideStart : this.context.start;
 
         const endPos = this.context.end;

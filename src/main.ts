@@ -320,17 +320,17 @@ class CursorActivityListener {
     };
 
     private readonly handleCursorActivity = (cursor: EditorPosition) => {
-        //This prevents the popup from opening when switching to the previous line
+        // This prevents the popup from opening when switching to the previous line
         if (this.lastCursorLine == cursor.line + 1)
             this.suggestionPopup.preventNextTrigger();
         this.lastCursorLine = cursor.line;
 
-        //Clear all placeholders when moving cursor outside of them
+        // Clear all placeholders when moving cursor somewhere else
         if (!this.snippetManager.placeholderAtPos(cursor)) {
             this.snippetManager.clearAllPlaceholders();
         }
 
-        //Prevents the suggestion popup from flickering when typing
+        // Prevents the suggestion popup from flickering when typing
         if (this.cursorTriggeredByChange) {
             this.cursorTriggeredByChange = false;
             return;

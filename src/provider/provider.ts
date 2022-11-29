@@ -2,20 +2,28 @@ import {EditorPosition, EditorSuggestContext} from "obsidian";
 import {CompletrSettings} from "../settings";
 import {maybeLowerCase} from "../editor_helpers";
 
-export type Suggestion = string | { displayName: string, replacement: string, overrideStart?: EditorPosition };
+export class Suggestion {
+    displayName: string;
+    replacement: string;
+    overrideStart?: EditorPosition;
 
-export function getSuggestionDisplayName(suggestion: Suggestion, lowerCase: boolean = false): string {
-    const res = typeof (suggestion) === "string" ? suggestion : suggestion.displayName;
-    return maybeLowerCase(res, lowerCase);
-}
+    constructor(displayName: string, replacement: string, overrideStart?: EditorPosition) {
+        this.displayName = displayName;
+        this.replacement = replacement;
+        this.overrideStart = overrideStart;
+    }
 
-export function getSuggestionReplacement(suggestion: Suggestion): string {
-    return typeof (suggestion) === "string" ? suggestion : suggestion.replacement;
+    static fromString(suggestion: string, overrideStart?: EditorPosition): Suggestion {
+        return new Suggestion(suggestion, suggestion, overrideStart);
+    }
+
+    getDisplayNameLowerCase(lowerCase: boolean): string {
+        return maybeLowerCase(this.displayName, lowerCase);
+    }
 }
 
 export interface SuggestionContext extends EditorSuggestContext {
     separatorChar: string;
-
 }
 
 export interface SuggestionProvider {

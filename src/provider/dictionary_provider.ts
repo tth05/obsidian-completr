@@ -1,5 +1,5 @@
 import {CompletrSettings, WordInsertionMode} from "../settings";
-import {SuggestionContext, SuggestionProvider} from "./provider";
+import {Suggestion, SuggestionContext, SuggestionProvider} from "./provider";
 import {maybeLowerCase} from "../editor_helpers";
 
 export abstract class DictionaryProvider implements SuggestionProvider {
@@ -8,7 +8,7 @@ export abstract class DictionaryProvider implements SuggestionProvider {
 
     abstract isEnabled(settings: CompletrSettings): boolean;
 
-    getSuggestions(context: SuggestionContext, settings: CompletrSettings): string[] {
+    getSuggestions(context: SuggestionContext, settings: CompletrSettings): Suggestion[] {
         if (!this.isEnabled(settings) || !context.query || context.query.length < settings.minWordTriggerLength)
             return [];
 
@@ -41,9 +41,9 @@ export abstract class DictionaryProvider implements SuggestionProvider {
             return [];
 
         //TODO: Rank those who match case higher
-        const result = new Set<string>();
+        const result: Suggestion[] = [];
         for (let el of list) {
-            filterMapIntoSet(result, el, s => {
+            filterMapIntoArray(result, el, s => {
                     let match = maybeLowerCase(s, ignoreCase);
                     if (ignoreDiacritics)
                         match = removeDiacritics(match);
@@ -51,12 +51,12 @@ export abstract class DictionaryProvider implements SuggestionProvider {
                 },
                 settings.wordInsertionMode === WordInsertionMode.IGNORE_CASE_APPEND ?
                     //In append mode we combine the query with the suggestions
-                    (s => context.query + s.substring(query.length, s.length)) :
-                    (s => s)
+                    (s => Suggestion.fromString(context.query + s.substring(query.length, s.length))) :
+                    (s => Suggestion.fromString(s))
             );
         }
 
-        return [...result].sort((a, b) => a.length - b.length);
+        return result.sort((a, b) => a.displayName.length - b.displayName.length);
     }
 }
 
@@ -66,10 +66,10 @@ function removeDiacritics(str: string): string {
     return str.normalize("NFD").replace(DIACRITICS_REGEX, "");
 }
 
-function filterMapIntoSet<T>(set: Set<T>, iterable: Iterable<T>, predicate: (val: T) => boolean, map: (val: T) => T) {
+function filterMapIntoArray<T, U>(array: Array<T>, iterable: Iterable<U>, predicate: (val: U) => boolean, map: (val: U) => T) {
     for (let val of iterable) {
         if (!predicate(val))
             continue;
-        set.add(map(val));
+        array.push(map(val));
     }
 }

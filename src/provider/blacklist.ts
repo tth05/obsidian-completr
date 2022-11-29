@@ -1,4 +1,4 @@
-import {getSuggestionDisplayName, Suggestion} from "./provider";
+import {Suggestion} from "./provider";
 import {Vault} from "obsidian";
 
 const BLACKLIST_PATH = ".obsidian/plugins/obsidian-completr/blacklisted_suggestions.txt";
@@ -8,18 +8,33 @@ export const SuggestionBlacklist = new class {
     private blacklist: Set<string> = new Set<string>();
 
     add(suggestion: Suggestion) {
-        this.blacklist.add(getSuggestionDisplayName(suggestion));
+        this.addFromText(suggestion.displayName);
+    }
+
+    addFromText(text: string) {
+        this.blacklist.add(text);
     }
 
     has(suggestion: Suggestion): boolean {
-        return this.blacklist.has(getSuggestionDisplayName(suggestion));
+        return this.hasText(suggestion.displayName);
+    }
+
+    hasText(text: string): boolean {
+        return this.blacklist.has(text);
     }
 
     filter(suggestions: Suggestion[]): Suggestion[] {
         if (this.blacklist.size < 1)
             return suggestions;
 
-        return suggestions.filter(s => !this.blacklist.has(getSuggestionDisplayName(s)));
+        return suggestions.filter(s => !this.blacklist.has(s.displayName));
+    }
+
+    filterText(suggestions: string[]): string[] {
+        if (this.blacklist.size < 1)
+            return suggestions;
+
+        return suggestions.filter(s => !this.blacklist.has(s));
     }
 
     async saveData(vault: Vault) {
@@ -35,7 +50,7 @@ export const SuggestionBlacklist = new class {
             if (!word)
                 continue;
 
-            this.add(word);
+            this.addFromText(word);
         }
     }
 };
