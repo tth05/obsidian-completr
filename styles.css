@@ -1,8 +1,31 @@
+body {
+    --completr-suggestion-icon-height: 14px;
+}
+
 .completr-suggestion-item {
     padding: 5px 10px 5px 10px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+
+    display: flex;
+    align-items: center;
+}
+
+.completr-suggestion-item > * {
+    display: inline-block;
+}
+
+.completr-suggestion-icon {
+    height: var(--completr-suggestion-icon-height);
+    min-height: var(--completr-suggestion-icon-height);
+    max-height: var(--completr-suggestion-icon-height);
+
+    margin-right: 0.5ch;
+    color: var(--completr-suggestion-color);
+}
+
+.completr-suggestion-text {
 }
 
 .completr-suggestion-placeholder {

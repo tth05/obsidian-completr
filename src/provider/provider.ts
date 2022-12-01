@@ -7,12 +7,19 @@ export class Suggestion {
     replacement: string;
     overrideStart?: EditorPosition;
     overrideEnd?: EditorPosition;
+    icon?: string;
+    color?: string;
 
-    constructor(displayName: string, replacement: string, overrideStart?: EditorPosition, overrideEnd?: EditorPosition) {
+    constructor(displayName: string, replacement: string, overrideStart?: EditorPosition, overrideEnd?: EditorPosition, opts?: {
+        icon?: string,
+        color?: string,
+    }) {
         this.displayName = displayName;
         this.replacement = replacement;
         this.overrideStart = overrideStart;
         this.overrideEnd = overrideEnd;
+        this.icon = opts?.icon;
+        this.color = opts?.color;
     }
 
     static fromString(suggestion: string, overrideStart?: EditorPosition): Suggestion {
@@ -29,6 +36,10 @@ export class Suggestion {
             options.replacement ?? this.replacement,
             options.overrideStart ?? this.overrideStart,
             options.overrideEnd ?? this.overrideEnd,
+            {
+                icon: options.icon ?? this.icon,
+                color: options.color ?? this.color,
+            }
         );
 
         return derived;
