@@ -302,6 +302,12 @@ export default class CompletrSettingsTab extends PluginSettingTab {
                     ).settingEl.addClass("completr-settings-list-item");
             }
         });
+
+        new Setting(containerEl)
+            .setName("Callout provider")
+            .setHeading();
+
+        this.createEnabledSetting("calloutProviderEnabled", "Whether or not the callout provider is enabled", containerEl);
     }
 
     private async reloadWords() {
