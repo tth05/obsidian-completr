@@ -6,11 +6,13 @@ export class Suggestion {
     displayName: string;
     replacement: string;
     overrideStart?: EditorPosition;
+    overrideEnd?: EditorPosition;
 
-    constructor(displayName: string, replacement: string, overrideStart?: EditorPosition) {
+    constructor(displayName: string, replacement: string, overrideStart?: EditorPosition, overrideEnd?: EditorPosition) {
         this.displayName = displayName;
         this.replacement = replacement;
         this.overrideStart = overrideStart;
+        this.overrideEnd = overrideEnd;
     }
 
     static fromString(suggestion: string, overrideStart?: EditorPosition): Suggestion {
@@ -19,6 +21,17 @@ export class Suggestion {
 
     getDisplayNameLowerCase(lowerCase: boolean): string {
         return maybeLowerCase(this.displayName, lowerCase);
+    }
+
+    derive(options: Partial<typeof this>) {
+        const derived = new Suggestion(
+            options.displayName ?? this.displayName,
+            options.replacement ?? this.replacement,
+            options.overrideStart ?? this.overrideStart,
+            options.overrideEnd ?? this.overrideEnd,
+        );
+
+        return derived;
     }
 }
 
