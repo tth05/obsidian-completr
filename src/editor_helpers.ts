@@ -33,9 +33,9 @@ export function matchWordBackwards(
 ): { query: string, separatorChar: string } {
     let query = "", separatorChar = null;
 
-    //Save some time for very long lines
+    // Save some time for very long lines
     let lookBackEnd = Math.max(0, cursor.ch - maxLookBackDistance);
-    //Find word in front of cursor
+    // Find word in front of cursor
     for (let i = cursor.ch - 1; i >= lookBackEnd; i--) {
         const prevChar = editor.getRange({...cursor, ch: i}, {...cursor, ch: i + 1});
         if (!charPredicate(prevChar)) {
@@ -121,7 +121,7 @@ export function getLatexBlockType(editor: Editor, cursorPos: EditorPosition, tri
     const frontMatterBounds = getFrontMatterBounds(editor) ?? {startLine: -1, endLine: -1};
     const blockTypeStack: { type: BlockType, line: number }[] = [];
 
-    for (let lineIndex = Math.max(0, cursorPos.line - 1000); lineIndex <= cursorPos.line; lineIndex++) {
+    for (let lineIndex = Math.max(0, cursorPos.line - 5000); lineIndex <= cursorPos.line; lineIndex++) {
         if (lineIndex >= frontMatterBounds.startLine && lineIndex <= frontMatterBounds.endLine)
             continue;
 
@@ -152,7 +152,7 @@ export function getLatexBlockType(editor: Editor, cursorPos: EditorPosition, tri
             return null;
 
         const currentBlock = blockTypeStack[currentIndex];
-        const otherBlockIndex = findIndex(blockTypeStack, ({type}) => type === currentBlock.type, currentIndex + 1);
+        const otherBlockIndex = indexOf(blockTypeStack, ({type}) => type === currentBlock.type, currentIndex + 1);
 
         if (otherBlockIndex === -1) {
             if (!triggerInCodeBlocks && currentBlock.type.isCodeBlock)
@@ -169,7 +169,7 @@ export function getLatexBlockType(editor: Editor, cursorPos: EditorPosition, tri
     }
 }
 
-function findIndex<T>(arr: T[], predicate: (element: T) => boolean, fromIndex: number): number {
+function indexOf<T>(arr: T[], predicate: (element: T) => boolean, fromIndex: number = 0): number {
     for (let i = fromIndex; i < arr.length; i++) {
         if (predicate(arr[i]))
             return i;
@@ -179,7 +179,8 @@ function findIndex<T>(arr: T[], predicate: (element: T) => boolean, fromIndex: n
 }
 
 function substringMatches(str: string, toMatch: string, from: number): boolean {
-    for (let i = from; i < from + toMatch.length - 1; i++) {
+    const bound = from + toMatch.length - 1;
+    for (let i = from; i < bound; i++) {
         if (str.charAt(i) !== toMatch.charAt(i - from))
             return false;
     }
