@@ -1,7 +1,8 @@
 import {Suggestion} from "./provider";
 import {Vault} from "obsidian";
+import {intoCompletrPath} from "../settings";
 
-const BLACKLIST_PATH = ".obsidian/plugins/obsidian-completr/blacklisted_suggestions.txt";
+const BLACKLIST_PATH = "blacklisted_suggestions.txt";
 const NEW_LINE_REGEX = /\r?\n/;
 
 export const SuggestionBlacklist = new class {
@@ -38,14 +39,15 @@ export const SuggestionBlacklist = new class {
     }
 
     async saveData(vault: Vault) {
-        await vault.adapter.write(BLACKLIST_PATH, [...this.blacklist].join("\n"));
+        await vault.adapter.write(intoCompletrPath(vault, BLACKLIST_PATH), [...this.blacklist].join("\n"));
     }
 
     async loadData(vault: Vault) {
-        if (!(await vault.adapter.exists(BLACKLIST_PATH)))
+        const path = intoCompletrPath(vault, BLACKLIST_PATH);
+        if (!(await vault.adapter.exists(path)))
             return
 
-        const contents = (await vault.adapter.read(BLACKLIST_PATH)).split(NEW_LINE_REGEX);
+        const contents = (await vault.adapter.read(path)).split(NEW_LINE_REGEX);
         for (let word of contents) {
             if (!word)
                 continue;

@@ -1,10 +1,9 @@
-import {CompletrSettings} from "../settings";
+import {CompletrSettings, intoCompletrPath} from "../settings";
 import {DictionaryProvider} from "./dictionary_provider";
-import {Notice, Vault} from "obsidian";
+import {Vault} from "obsidian";
 import {SuggestionBlacklist} from "./blacklist";
-import {Suggestion} from "./provider";
 
-const BASE_FOLDER_PATH = ".obsidian/plugins/obsidian-completr/wordLists";
+const WORD_LISTS_FOLDER_PATH = "wordLists";
 const NEW_LINE_REGEX = /\r?\n/;
 
 class WordListSuggestionProvider extends DictionaryProvider {
@@ -19,7 +18,7 @@ class WordListSuggestionProvider extends DictionaryProvider {
         this.wordMap.clear();
 
         const fileNames = await this.getRelativeFilePaths(vault);
-        //Read all files
+        // Read all files
         for (let i = fileNames.length - 1; i >= 0; i--) {
             const fileName = fileNames[i];
 
@@ -31,7 +30,7 @@ class WordListSuggestionProvider extends DictionaryProvider {
                 continue;
             }
 
-            //Each line is a word
+            // Each line is a word
             const lines = data.split(NEW_LINE_REGEX);
             for (let line of lines) {
                 if (line === "" || line.length < settings.minWordLength)
@@ -48,7 +47,7 @@ class WordListSuggestionProvider extends DictionaryProvider {
         }
 
         let count = 0;
-        //Sort by length
+        // Sort by length
         for (let entry of this.wordMap.entries()) {
             const newValue = SuggestionBlacklist.filterText(entry[1].sort((a, b) => a.length - b.length));
             this.wordMap.set(entry[0], newValue);
@@ -63,7 +62,7 @@ class WordListSuggestionProvider extends DictionaryProvider {
     }
 
     async importWordList(vault: Vault, name: string, text: string): Promise<boolean> {
-        const path = BASE_FOLDER_PATH + "/" + name;
+        const path = intoCompletrPath(vault, WORD_LISTS_FOLDER_PATH, name);
         if (await vault.adapter.exists(path))
             return false;
 
@@ -81,10 +80,11 @@ class WordListSuggestionProvider extends DictionaryProvider {
      * @param vault
      */
     async getRelativeFilePaths(vault: Vault): Promise<string[]> {
-        if (!(await vault.adapter.exists(BASE_FOLDER_PATH)))
-            await vault.adapter.mkdir(BASE_FOLDER_PATH);
+        const path = intoCompletrPath(vault, WORD_LISTS_FOLDER_PATH);
+        if (!(await vault.adapter.exists(path)))
+            await vault.adapter.mkdir(path);
 
-        return (await vault.adapter.list(BASE_FOLDER_PATH)).files;
+        return (await vault.adapter.list(path)).files;
     }
 }
 

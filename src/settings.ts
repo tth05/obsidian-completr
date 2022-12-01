@@ -1,3 +1,5 @@
+import {Vault} from "obsidian";
+
 export const enum WordInsertionMode {
     MATCH_CASE_REPLACE = "Match-Case & Replace",
     IGNORE_CASE_REPLACE = "Ignore-Case & Replace",
@@ -40,4 +42,8 @@ export const DEFAULT_SETTINGS: CompletrSettings = {
     frontMatterProviderEnabled: true,
     frontMatterTagAppendSuffix: true,
     frontMatterIgnoreCase: true
+}
+
+export function intoCompletrPath(vault: Vault, ...path: string[]): string {
+    return vault.configDir + "/plugins/obsidian-completr/" + path.join("/");
 }

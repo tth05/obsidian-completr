@@ -3,7 +3,7 @@ import {
     SuggestionContext,
     SuggestionProvider
 } from "./provider";
-import {CompletrSettings} from "../settings";
+import {CompletrSettings, intoCompletrPath} from "../settings";
 import {BlockType, getLatexBlockType, maybeLowerCase} from "../editor_helpers";
 import {Notice, Vault} from "obsidian";
 import {SuggestionBlacklist} from "./blacklist";
@@ -16,7 +16,7 @@ function substringUntil(str: string, delimiter: string): string {
     return str.substring(0, index);
 }
 
-const LATEX_COMMANDS_PATH = ".obsidian/plugins/obsidian-completr/latex_commands.json";
+const LATEX_COMMANDS_PATH = "latex_commands.json";
 
 class LatexSuggestionProvider implements SuggestionProvider {
 
@@ -60,12 +60,13 @@ class LatexSuggestionProvider implements SuggestionProvider {
     }
 
     async loadCommands(vault: Vault) {
-        if (!(await vault.adapter.exists(LATEX_COMMANDS_PATH))) {
+        const path = intoCompletrPath(vault, LATEX_COMMANDS_PATH);
+        if (!(await vault.adapter.exists(path))) {
             const defaultCommands = generateDefaultLatexCommands();
-            await vault.adapter.write(LATEX_COMMANDS_PATH, JSON.stringify(defaultCommands, null, 2));
+            await vault.adapter.write(path, JSON.stringify(defaultCommands, null, 2));
             this.loadedCommands = defaultCommands;
         } else {
-            const data = await vault.adapter.read(LATEX_COMMANDS_PATH);
+            const data = await vault.adapter.read(path);
             try {
                 const commands: Suggestion[] = (JSON.parse(data) as any[])
                     .map(obj => typeof obj === "string" ?
@@ -79,7 +80,7 @@ class LatexSuggestionProvider implements SuggestionProvider {
                 this.loadedCommands = commands;
             } catch (e) {
                 console.log("Completr latex commands parse error:", e.message);
-                new Notice("Failed to parse latex commands file " + LATEX_COMMANDS_PATH + ". Using default commands.", 3000);
+                new Notice("Failed to parse latex commands file " + path + ". Using default commands.", 3000);
                 this.loadedCommands = generateDefaultLatexCommands();
             }
         }
