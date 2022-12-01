@@ -109,7 +109,7 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
         const replacement = value.replacement;
         const start = typeof value !== "string" && value.overrideStart ? value.overrideStart : this.context.start;
 
-        const endPos = this.context.end;
+        const endPos = value.overrideEnd ?? this.context.end;
         this.context.editor.replaceRange(replacement, start, {
             ...endPos,
             ch: Math.min(endPos.ch, this.context.editor.getLine(endPos.line).length)
