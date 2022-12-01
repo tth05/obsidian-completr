@@ -19,5 +19,6 @@ main.js
 data.json
 scanned_words.txt
 blacklisted_suggestions.txt
+callout_suggestions.json
 latex_commands.json
 wordLists

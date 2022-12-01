@@ -22,7 +22,8 @@ export interface CompletrSettings {
     wordListProviderEnabled: boolean,
     frontMatterProviderEnabled: boolean,
     frontMatterTagAppendSuffix: boolean,
-    frontMatterIgnoreCase: boolean
+    frontMatterIgnoreCase: boolean,
+    calloutProviderEnabled: boolean,
 }
 
 export const DEFAULT_SETTINGS: CompletrSettings = {
@@ -41,7 +42,8 @@ export const DEFAULT_SETTINGS: CompletrSettings = {
     wordListProviderEnabled: true,
     frontMatterProviderEnabled: true,
     frontMatterTagAppendSuffix: true,
-    frontMatterIgnoreCase: true
+    frontMatterIgnoreCase: true,
+    calloutProviderEnabled: true,
 }
 
 export function intoCompletrPath(vault: Vault, ...path: string[]): string {

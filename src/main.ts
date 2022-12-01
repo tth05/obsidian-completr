@@ -10,6 +10,7 @@ import {editorToCodeMirrorState, posFromIndex} from "./editor_helpers";
 import {markerStateField} from "./marker_state_field";
 import {FrontMatter} from "./provider/front_matter_provider";
 import {Latex} from "./provider/latex_provider";
+import {Callout} from "./provider/callout_provider";
 import {SuggestionBlacklist} from "./provider/blacklist";
 
 export default class CompletrPlugin extends Plugin {
@@ -273,6 +274,7 @@ export default class CompletrPlugin extends Plugin {
             WordList.loadFromFiles(this.app.vault, this.settings);
             FileScanner.loadData(this.app.vault);
             Latex.loadCommands(this.app.vault);
+            Callout.loadSuggestions(this.app.vault);
         });
     }
 
