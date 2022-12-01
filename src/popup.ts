@@ -9,6 +9,7 @@ import {
     EditorSuggest,
     EditorSuggestContext,
     EditorSuggestTriggerInfo,
+    getIcon,
     TFile
 } from "obsidian";
 import SnippetManager from "./snippet_manager";
@@ -103,7 +104,24 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
 
     renderSuggestion(value: Suggestion, el: HTMLElement): void {
         el.addClass("completr-suggestion-item");
-        el.setText(value.displayName);
+        if (value.color != null) {
+            el.style.setProperty("--completr-suggestion-color", value.color);
+        }
+
+        // Add the icon.
+        if (value.icon != null) {
+            const icon = getIcon(value.icon);
+            if (icon != null) {
+                icon.addClass("completr-suggestion-icon");
+                el.appendChild(icon);
+            }
+        }
+
+        // Add the text.
+        const text = el.doc.createElement("div");
+        text.addClass("completr-suggestion-text");
+        text.setText(value.displayName);
+        el.appendChild(text);
     }
 
     selectSuggestion(value: Suggestion, evt: MouseEvent | KeyboardEvent): void {
