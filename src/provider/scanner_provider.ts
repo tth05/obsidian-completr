@@ -26,7 +26,7 @@ class ScannerSuggestionProvider extends DictionaryProvider {
     async scanFile(settings: CompletrSettings, file: TFile, saveImmediately: boolean) {
         const contents = await file.vault.cachedRead(file);
 
-        const regex = new RegExp("\\$+.*?\\$+|`+.*?`+|\\[+.*?\\]+|([" + settings.characterRegex + "]+)", "gsu");
+        const regex = new RegExp("\\$+.*?\\$+|`+.*?`+|\\[+.*?\\]+|https?:\\/\\/[^\\n\\s]+|([" + settings.characterRegex + "]+)", "gsu");
         for (let match of contents.matchAll(regex)) {
             const groupValue = match[1];
             if (!groupValue || groupValue.length < settings.minWordLength)
