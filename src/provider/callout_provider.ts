@@ -83,21 +83,13 @@ class CalloutSuggestionProvider implements SuggestionProvider {
             await vault.adapter.write(path, JSON.stringify(defaultCommands, null, 2));
             this.loadedSuggestions = defaultCommands;
         } else {
-            const data = await vault.adapter.read(path);
             try {
-                const suggestions: Suggestion[] = (JSON.parse(data) as any[])
-                    .map(obj => typeof obj === "string" ?
-                        Suggestion.fromString(obj) :
-                        new Suggestion(obj.displayName, obj.replacement)
-                    );
-                const invalidsuggestion = suggestions.find(c => c.displayName.includes("\n"));
-                if (invalidsuggestion)
-                    throw new Error("Display name cannot contain a newline: " + invalidsuggestion.displayName);
-
-                this.loadedSuggestions = suggestions;
+                this.loadedSuggestions = await loadSuggestionsFromFile(vault, path, {
+                    allowColors: true,
+                    allowIcons: true,
+                });
             } catch (e) {
-                console.log("Completr callout types parse error:", e.message);
-                new Notice("Failed to parse callout types file " + path + ". Using default suggestions.", 3000);
+                new Notice(`${e.message}. Using default callout types.`, 3000);
                 this.loadedSuggestions = generateDefaulCalloutOptions();
             }
         }
@@ -190,36 +182,106 @@ function extractCalloutHeader(line: string): CalloutHeader | null {
 }
 
 /*
+ * Loads suggestions from a file.
+ */
+export async function loadSuggestionsFromFile(vault: Vault, file: string, opts?: Partial<{
+    allowIcons: boolean,
+    allowColors: boolean,
+}>) {
+    const rawData = await vault.adapter.read(file);
+    let data: any[];
+
+    // Parse the suggestions.
+    try {
+        data = JSON.parse(rawData);
+    } catch (e) {
+        console.log("Completr callout types parse error:", e.message);
+        throw new Error(`Failed to parse file ${file}.`);
+    }
+
+    // Ensure the suggestions are an array.
+    if (!(data instanceof Array)) {
+        throw new Error(`Invalid suggestions file ${file}: JSON root must be array.`)
+    }
+
+    // Parse suggestions.
+    const suggestions = data.map(obj => {
+        if (typeof obj === 'string')
+            return Suggestion.fromString(obj);
+
+        if (!opts?.allowColors) delete obj['color'];
+        if (!opts?.allowIcons) delete obj['icon'];
+
+        return new Suggestion(
+            obj.displayName,
+            obj.replacement,
+            undefined,
+            undefined,
+            obj,
+        )
+    });
+
+    // Validate suggestions.
+    const invalidsuggestion = suggestions.find(c => c.displayName.includes("\n"));
+    if (invalidsuggestion)
+        throw new Error("Display name cannot contain a newline: " + invalidsuggestion.displayName);
+
+    // Return suggestions.
+    return suggestions;
+}
+
+function newSuggestion(name: string, replacement: string, icon: string, color: string) {
+    return new Suggestion(name, replacement, undefined, undefined, {
+        icon,
+        color,
+    })
+}
+
+/*
  * Generates the default callout suggestions. This is a method to avoid any unnecessary initialization
  */
 function generateDefaulCalloutOptions(): Suggestion[] {
+    const NOTE: [string, string] = ['lucide-pencil', '#448aff'];
+    const ABSTRACT: [string, string] = ['lucide-clipboard-list', '#00b0ff'];
+    const INFO: [string, string] = ['lucide-info', '#00b8d4'];
+    const TODO: [string, string] = ['lucide-check-circle-2', '#00b8d4'];
+    const TIP: [string, string] = ['lucide-flame', '#00bfa6'];
+    const SUCCESS: [string, string] = ['lucide-check', '#00c853'];
+    const QUESTION: [string, string] = ['lucide-help-circle', '#63dd17'];
+    const WARNING: [string, string] = ['lucide-alert-triangle', '#ff9100'];
+    const FAILURE: [string, string] = ['lucide-x', '#ff5252'];
+    const DANGER: [string, string] = ['lucide-zap', '#ff1744'];
+    const BUG: [string, string] = ['lucide-bug', '#f50057'];
+    const EXAMPLE: [string, string] = ['lucide-list', '#7c4dff'];
+    const QUOTE: [string, string] = ['quote-glyph', '#9e9e9e'];
+
     return [
-        new Suggestion("Note", "note"),
-        new Suggestion("Summary", "summary"),
-        new Suggestion("Info", "info"),
-        new Suggestion("Tip", "tip"),
-        new Suggestion("Hint", "hint"),
-        new Suggestion("Example", "example"),
-        new Suggestion("Quote", "quote"),
-        new Suggestion("Important", "important"),
-        new Suggestion("Warning", "warning"),
-        new Suggestion("Success", "success"),
-        new Suggestion("Error", "error"),
-        new Suggestion("To-Do", "todo"),
-        new Suggestion("Check", "check"),
-        new Suggestion("Done", "done"),
-        new Suggestion("Question", "question"),
-        new Suggestion("Caution", "caution"),
-        new Suggestion("Attention", "attention"),
-        new Suggestion("Failure", "failure"),
-        new Suggestion("Fail", "fail"),
-        new Suggestion("Missing", "missing"),
-        new Suggestion("Danger", "danger"),
-        new Suggestion("Bug", "bug"),
-        new Suggestion("Help", "Help"),
-        new Suggestion("Abstract", "abstract"),
-        new Suggestion("Cite", "cite"),
-        new Suggestion("TL;DR", "tldr"),
-        new Suggestion("FAQ", "faq"),
+        newSuggestion("Note", "note", ...NOTE),
+        newSuggestion("Summary", "summary", ...ABSTRACT),
+        newSuggestion("Abstract", "abstract", ...ABSTRACT),
+        newSuggestion("TL;DR", "tldr", ...ABSTRACT),
+        newSuggestion("Info", "info", ...INFO),
+        newSuggestion("To-Do", "todo", ...TODO),
+        newSuggestion("Tip", "tip", ...TIP),
+        newSuggestion("Hint", "hint", ...TIP),
+        newSuggestion("Important", "important", ...TIP),
+        newSuggestion("Success", "success", ...SUCCESS),
+        newSuggestion("Check", "check", ...SUCCESS),
+        newSuggestion("Done", "done", ...SUCCESS),
+        newSuggestion("Question", "question", ...QUESTION),
+        newSuggestion("Help", "Help", ...QUESTION),
+        newSuggestion("FAQ", "faq", ...QUESTION),
+        newSuggestion("Warning", "warning", ...WARNING),
+        newSuggestion("Caution", "caution", ...WARNING),
+        newSuggestion("Attention", "attention", ...WARNING),
+        newSuggestion("Failure", "failure", ...FAILURE),
+        newSuggestion("Fail", "fail", ...FAILURE),
+        newSuggestion("Missing", "missing", ...FAILURE),
+        newSuggestion("Danger", "danger", ...DANGER),
+        newSuggestion("Error", "error", ...DANGER),
+        newSuggestion("Bug", "bug", ...BUG),
+        newSuggestion("Example", "example", ...EXAMPLE),
+        newSuggestion("Quote", "quote", ...QUOTE),
+        newSuggestion("Cite", "cite", ...QUOTE),
     ];
 }
