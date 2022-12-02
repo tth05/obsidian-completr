@@ -33,7 +33,8 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - The "Open suggestion popup" command is now invisible when the popup is already open
+            - New callout suggestions provider by eth-p
+            - Multiple bug fixes
           draft: false
           prerelease: false
       - name: Upload main.js
