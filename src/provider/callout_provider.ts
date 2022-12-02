@@ -54,8 +54,8 @@ class CalloutSuggestionProvider implements SuggestionProvider {
             return [];
 
         // Generate and return the suggestions.
-        const replaceFoldable = callout.foldable.rawText === '' ? ' ' : callout.foldable.rawText;
         const replaceTitle = callout.title.rawText;
+        const replaceFoldable = untrimEnd(callout.foldable.rawText);
 
         const search = callout.type.text.toLowerCase();
         return this.loadedSuggestions
@@ -100,6 +100,15 @@ class CalloutSuggestionProvider implements SuggestionProvider {
 
 export const Callout = new CalloutSuggestionProvider();
 
+/*
+ * Ensures there is at least one character worth of whitespace at the end of the provided string.
+ */
+function untrimEnd(string: string) {
+    if (string.trimEnd() !== string)
+        return string; // There's already some whitespace at the end.
+
+    return `${string} `;
+}
 
 /*
  * Extract information about the block quote.
