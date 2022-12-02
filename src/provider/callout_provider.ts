@@ -50,14 +50,17 @@ class CalloutSuggestionProvider implements SuggestionProvider {
 
         // Do nothing if the cursor is outside the callout type area.
         const cursor = editor.getCursor("from").ch - quote.chOffset;
-        if (cursor < callout.type.start + 1 || cursor > (callout.type.end - (callout.type.rawText.endsWith("]") ? 1 : 0)))
+        const calloutType = callout.type;
+        if (cursor < calloutType.start + 1 || cursor > (calloutType.end - (calloutType.rawText.endsWith("]") ? 1 : 0)))
             return [];
 
         // Generate and return the suggestions.
         const replaceTitle = callout.title.rawText;
         const replaceFoldable = untrimEnd(callout.foldable.rawText);
 
-        const search = callout.type.text.toLowerCase();
+        // This ensures that we only perform the startsWith check up until where the cursor is placed in the type text.
+        const cursorInType = cursor - (calloutType.start + calloutType.rawText.indexOf(calloutType.text));
+        const search = calloutType.text.toLowerCase().substring(0, cursorInType);
         return this.loadedSuggestions
             .filter(s => s.displayName.toLowerCase().startsWith(search) || s.replacement.toLowerCase().startsWith(search))
             .map(suggestion => {
