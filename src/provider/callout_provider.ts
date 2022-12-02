@@ -3,10 +3,9 @@ import {
     SuggestionContext,
     SuggestionProvider
 } from "./provider";
-import {CompletrSettings, intoCompletrPath} from "../settings";
-import {Notice, Vault} from "obsidian";
-import {SuggestionBlacklist} from "./blacklist";
-
+import { CompletrSettings, intoCompletrPath } from "../settings";
+import { Notice, Vault } from "obsidian";
+import { SuggestionBlacklist } from "./blacklist";
 
 const CALLOUT_SUGGESTIONS_FILE = "callout_suggestions.json";
 
@@ -15,6 +14,7 @@ const CALLOUT_HEADER_REGEX = /^(\[!?([^\]]*)\])([+-]?)([ \t]*)(.*)$/d; // [!TYPE
 const CALLOUT_HEADER_PARTIAL_REGEX = /^(\[!?([^\]]*))$/d;           // [!TYPE
 
 class CalloutSuggestionProvider implements SuggestionProvider {
+    blocksAllOtherProviders = true;
 
     private loadedSuggestions: Suggestion[] = [];
 
@@ -50,7 +50,7 @@ class CalloutSuggestionProvider implements SuggestionProvider {
 
         // Do nothing if the cursor is outside the callout type area.
         const cursor = editor.getCursor("from").ch - quote.chOffset;
-        if (cursor < callout.type.start + 1 || cursor > callout.type.end)
+        if (cursor < callout.type.start + 1 || cursor > (callout.type.end - (callout.type.rawText.endsWith("]") ? 1 : 0)))
             return [];
 
         // Generate and return the suggestions.
