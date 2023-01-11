@@ -33,8 +33,7 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - New callout suggestions provider by eth-p
-            - Multiple bug fixes
+            - Fix front matter list completion not working when indentation is present
           draft: false
           prerelease: false
       - name: Upload main.js
