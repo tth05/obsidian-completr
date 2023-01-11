@@ -1,10 +1,10 @@
-import {App, ButtonComponent, Modal, Notice, PluginSettingTab, Setting} from "obsidian";
+import { App, ButtonComponent, Modal, Notice, PluginSettingTab, Setting } from "obsidian";
 import CompletrPlugin from "./main";
-import {FileScanner} from "./provider/scanner_provider";
-import {WordList} from "./provider/word_list_provider";
-import {CompletrSettings, WordInsertionMode} from "./settings";
-import {TextDecoder} from "util";
-import {detect} from "jschardet";
+import { FileScanner } from "./provider/scanner_provider";
+import { WordList } from "./provider/word_list_provider";
+import { CompletrSettings, WordInsertionMode } from "./settings";
+import { TextDecoder } from "util";
+import { detect } from "jschardet";
 
 export default class CompletrSettingsTab extends PluginSettingTab {
 
@@ -17,7 +17,7 @@ export default class CompletrSettingsTab extends PluginSettingTab {
     }
 
     display(): any {
-        const {containerEl} = this;
+        const { containerEl } = this;
 
         containerEl.empty();
 

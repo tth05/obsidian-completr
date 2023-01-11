@@ -1,7 +1,7 @@
-import {TFile, Vault} from "obsidian";
-import {CompletrSettings, intoCompletrPath} from "../settings";
-import {DictionaryProvider} from "./dictionary_provider";
-import {SuggestionBlacklist} from "./blacklist";
+import { TFile, Vault } from "obsidian";
+import { CompletrSettings, intoCompletrPath } from "../settings";
+import { DictionaryProvider } from "./dictionary_provider";
+import { SuggestionBlacklist } from "./blacklist";
 
 const SCANNED_WORDS_PATH = "scanned_words.txt";
 const NEW_LINE_REGEX = /\r?\n/;

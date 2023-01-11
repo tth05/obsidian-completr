@@ -1,17 +1,17 @@
-import {EditorPosition, editorViewField, KeymapContext, MarkdownView, Plugin, TFile,} from "obsidian";
+import { EditorPosition, KeymapContext, MarkdownView, Plugin, TFile, } from "obsidian";
 import SnippetManager from "./snippet_manager";
-import SuggestionPopup, {SelectionDirection} from "./popup";
-import {CompletrSettings, DEFAULT_SETTINGS} from "./settings";
-import {WordList} from "./provider/word_list_provider";
-import {FileScanner} from "./provider/scanner_provider";
+import SuggestionPopup, { SelectionDirection } from "./popup";
+import { CompletrSettings, DEFAULT_SETTINGS } from "./settings";
+import { WordList } from "./provider/word_list_provider";
+import { FileScanner } from "./provider/scanner_provider";
 import CompletrSettingsTab from "./settings_tab";
-import {EditorView, ViewUpdate} from "@codemirror/view";
-import {editorToCodeMirrorState, posFromIndex} from "./editor_helpers";
-import {markerStateField} from "./marker_state_field";
-import {FrontMatter} from "./provider/front_matter_provider";
-import {Latex} from "./provider/latex_provider";
-import {Callout} from "./provider/callout_provider";
-import {SuggestionBlacklist} from "./provider/blacklist";
+import { EditorView, ViewUpdate } from "@codemirror/view";
+import { editorToCodeMirrorState, posFromIndex } from "./editor_helpers";
+import { markerStateField } from "./marker_state_field";
+import { FrontMatter } from "./provider/front_matter_provider";
+import { Latex } from "./provider/latex_provider";
+import { Callout } from "./provider/callout_provider";
+import { SuggestionBlacklist } from "./provider/blacklist";
 
 export default class CompletrPlugin extends Plugin {
 

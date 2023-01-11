@@ -1,12 +1,12 @@
-import {Suggestion, SuggestionContext, SuggestionProvider} from "./provider";
-import {CompletrSettings} from "../settings";
-import {CachedMetadata, Editor, getAllTags, MetadataCache, TFile} from "obsidian";
-import {isInFrontMatterBlock, matchWordBackwards, maybeLowerCase} from "../editor_helpers";
+import { Suggestion, SuggestionContext, SuggestionProvider } from "./provider";
+import { CompletrSettings } from "../settings";
+import { CachedMetadata, Editor, getAllTags, MetadataCache, TFile } from "obsidian";
+import { isInFrontMatterBlock, matchWordBackwards, maybeLowerCase } from "../editor_helpers";
 
 const BASE_SUGGESTION = new Suggestion(
     "front-matter",
     "---\n~\n---",
-    {line: 0, ch: 0}
+    { line: 0, ch: 0 }
 );
 
 const PUBLISH_SUGGESTION = new Suggestion(
@@ -22,7 +22,7 @@ function findTagCompletionType(keyInfo: YAMLKeyInfo, editor: Editor, currentLine
     if (currentLine.startsWith(key + ": "))
         return "inline";
     //Check for YAML multi-line list
-    if (!currentLine.startsWith("- ") || !isList)
+    if (!currentLine.trimStart().startsWith("- ") || !isList)
         return "none";
 
     let foundListStart = false;
@@ -141,12 +141,12 @@ class FrontMatterSuggestionProvider implements SuggestionProvider {
             return FrontMatterSuggestionProvider.getPublishSuggestions(query);
 
         //Custom keys
-        const {key, type} = this.getPossibleCompletions()
+        const { key, type } = this.getPossibleCompletions()
             .map(possibleKey => ({
                 key: possibleKey,
                 type: findTagCompletionType(possibleKey, context.editor, context.start.line, currentLine, ignoreCase)
             }))
-            .filter(({type}) => type !== "none")
+            .filter(({ type }) => type !== "none")
             .shift() ?? {};
         if (!key)
             return [];
@@ -159,11 +159,27 @@ class FrontMatterSuggestionProvider implements SuggestionProvider {
             settings.maxLookBackDistance
         ).query, ignoreCase);
 
-        return [...key.completions].filter(tag => maybeLowerCase(tag, ignoreCase).startsWith(customQuery)).map(tag => (new Suggestion(
-            tag,
-            tag + (settings.frontMatterTagAppendSuffix && key.isList ? (type === "inline" ? ", " : "\n- ") : ""),
-            {...context.end, ch: context.end.ch - customQuery.length}
-        ))).sort((a, b) => a.displayName.length - b.displayName.length);
+        // Compute the replacement suffix
+        let replacementSuffix = "";
+        if (settings.frontMatterTagAppendSuffix && key.isList) {
+            if (type === "inline") {
+                replacementSuffix = ", ";
+            } else {
+                // Keep indentation of current line
+                const line = context.editor.getLine(context.start.line);
+                const indentation = line.match(/^\s*/)?.[0] ?? "";
+
+                replacementSuffix = `\n${indentation}- `;
+            }
+        }
+
+        return [...key.completions].filter(tag => maybeLowerCase(tag, ignoreCase).startsWith(customQuery)).map(tag => {
+            return (new Suggestion(
+                tag,
+                tag + replacementSuffix,
+                { ...context.end, ch: context.end.ch - customQuery.length }
+            ));
+        }).sort((a, b) => a.displayName.length - b.displayName.length);
     }
 
     loadYAMLKeyCompletions(cache: MetadataCache, files: TFile[]) {

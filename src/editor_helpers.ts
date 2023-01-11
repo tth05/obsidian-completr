@@ -1,10 +1,10 @@
-import {Editor, EditorPosition} from "obsidian";
-import {EditorState, Text} from "@codemirror/state";
-import {EditorView} from "@codemirror/view";
+import { Editor, EditorPosition } from "obsidian";
+import { EditorState, Text } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 
 export function posFromIndex(doc: Text, offset: number): EditorPosition {
     let line = doc.lineAt(offset)
-    return {line: line.number - 1, ch: offset - line.from}
+    return { line: line.number - 1, ch: offset - line.from }
 }
 
 export function indexFromPos(doc: Text, pos: EditorPosition): number {
@@ -37,7 +37,7 @@ export function matchWordBackwards(
     let lookBackEnd = Math.max(0, cursor.ch - maxLookBackDistance);
     // Find word in front of cursor
     for (let i = cursor.ch - 1; i >= lookBackEnd; i--) {
-        const prevChar = editor.getRange({...cursor, ch: i}, {...cursor, ch: i + 1});
+        const prevChar = editor.getRange({ ...cursor, ch: i }, { ...cursor, ch: i + 1 });
         if (!charPredicate(prevChar)) {
             separatorChar = prevChar;
             break;
@@ -46,7 +46,7 @@ export function matchWordBackwards(
         query = prevChar + query;
     }
 
-    return {query, separatorChar};
+    return { query, separatorChar };
 }
 
 export function isInFrontMatterBlock(editor: Editor, pos: EditorPosition): boolean {
@@ -85,7 +85,7 @@ function getFrontMatterBounds(editor: Editor): { startLine: number, endLine: num
     if (endLine === -1)
         return null;
 
-    return {startLine, endLine};
+    return { startLine, endLine };
 }
 
 export class BlockType {
@@ -118,7 +118,7 @@ export class BlockType {
 }
 
 export function getLatexBlockType(editor: Editor, cursorPos: EditorPosition, triggerInCodeBlocks: boolean): BlockType | null {
-    const frontMatterBounds = getFrontMatterBounds(editor) ?? {startLine: -1, endLine: -1};
+    const frontMatterBounds = getFrontMatterBounds(editor) ?? { startLine: -1, endLine: -1 };
     const blockTypeStack: { type: BlockType, line: number }[] = [];
 
     for (let lineIndex = Math.max(0, cursorPos.line - 5000); lineIndex <= cursorPos.line; lineIndex++) {
@@ -139,7 +139,7 @@ export function getLatexBlockType(editor: Editor, cursorPos: EditorPosition, tri
                 matchingBlockType = matchingBlockType.otherType;
             }
 
-            blockTypeStack.push({type: matchingBlockType, line: lineIndex});
+            blockTypeStack.push({ type: matchingBlockType, line: lineIndex });
         }
     }
 
@@ -152,7 +152,7 @@ export function getLatexBlockType(editor: Editor, cursorPos: EditorPosition, tri
             return null;
 
         const currentBlock = blockTypeStack[currentIndex];
-        const otherBlockIndex = indexOf(blockTypeStack, ({type}) => type === currentBlock.type, currentIndex + 1);
+        const otherBlockIndex = indexOf(blockTypeStack, ({ type }) => type === currentBlock.type, currentIndex + 1);
 
         if (otherBlockIndex === -1) {
             if (!triggerInCodeBlocks && currentBlock.type.isCodeBlock)

@@ -1,6 +1,6 @@
-import {Suggestion} from "./provider";
-import {Vault} from "obsidian";
-import {intoCompletrPath} from "../settings";
+import { Suggestion } from "./provider";
+import { Vault } from "obsidian";
+import { intoCompletrPath } from "../settings";
 
 const BLACKLIST_PATH = "blacklisted_suggestions.txt";
 const NEW_LINE_REGEX = /\r?\n/;

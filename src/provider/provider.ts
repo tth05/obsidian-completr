@@ -1,6 +1,6 @@
-import {EditorPosition, EditorSuggestContext} from "obsidian";
-import {CompletrSettings} from "../settings";
-import {maybeLowerCase} from "../editor_helpers";
+import { EditorPosition, EditorSuggestContext } from "obsidian";
+import { CompletrSettings } from "../settings";
+import { maybeLowerCase } from "../editor_helpers";
 
 export class Suggestion {
     displayName: string;

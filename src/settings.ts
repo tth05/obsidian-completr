@@ -1,4 +1,4 @@
-import {Vault} from "obsidian";
+import { Vault } from "obsidian";
 
 export const enum WordInsertionMode {
     MATCH_CASE_REPLACE = "Match-Case & Replace",

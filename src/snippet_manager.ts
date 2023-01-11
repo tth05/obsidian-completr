@@ -1,8 +1,8 @@
-import {Editor, EditorPosition} from "obsidian";
-import {Decoration} from "@codemirror/view";
-import {editorToCodeMirrorState, editorToCodeMirrorView, indexFromPos, posFromIndex} from "./editor_helpers";
-import {addMark, clearMarks, markerStateField, removeMarkBySpecAttribute} from "./marker_state_field";
-import {Range} from "@codemirror/state";
+import { Editor, EditorPosition } from "obsidian";
+import { Decoration } from "@codemirror/view";
+import { editorToCodeMirrorState, editorToCodeMirrorView, indexFromPos, posFromIndex } from "./editor_helpers";
+import { addMark, clearMarks, markerStateField, removeMarkBySpecAttribute } from "./marker_state_field";
+import { Range } from "@codemirror/state";
 
 const COLORS = ["lightskyblue", "orange", "lime", "pink", "cornsilk", "magenta", "navajowhite"];
 
@@ -33,7 +33,7 @@ export class PlaceholderReference {
 
     removeFromEditor(): void {
         editorToCodeMirrorView(this.editor).dispatch({
-            effects: removeMarkBySpecAttribute.of({attribute: "reference", reference: this}),
+            effects: removeMarkBySpecAttribute.of({ attribute: "reference", reference: this }),
         });
     }
 }
@@ -73,9 +73,9 @@ export default class SnippetManager {
                 const lineBaseOffset = lineIndex === 0 ? start.ch : 0;
                 if (c === "~") {
                     //Hack: Will break things if a # is on the same line
-                    const cursorPos = {line: start.line + lineIndex, ch: lineBaseOffset + i};
+                    const cursorPos = { line: start.line + lineIndex, ch: lineBaseOffset + i };
                     editor.setCursor(cursorPos);
-                    editor.replaceRange("", cursorPos, {...cursorPos, ch: cursorPos.ch + 1});
+                    editor.replaceRange("", cursorPos, { ...cursorPos, ch: cursorPos.ch + 1 });
                     continue;
                 }
 
@@ -88,11 +88,11 @@ export default class SnippetManager {
                     },
                     reference: reference
                 }).range(
-                    indexFromPos(editorView.state.doc, {line: start.line + lineIndex, ch: lineBaseOffset + i}),
-                    indexFromPos(editorView.state.doc, {line: start.line + lineIndex, ch: lineBaseOffset + i + 1})
+                    indexFromPos(editorView.state.doc, { line: start.line + lineIndex, ch: lineBaseOffset + i }),
+                    indexFromPos(editorView.state.doc, { line: start.line + lineIndex, ch: lineBaseOffset + i + 1 })
                 );
 
-                editorView.dispatch({effects: addMark.of(mark)});
+                editorView.dispatch({ effects: addMark.of(mark) });
 
                 this.currentPlaceholderReferences.unshift(reference);
             }
@@ -119,7 +119,7 @@ export default class SnippetManager {
 
         if (newRange.from.ch <= oldRange.from.ch && newRange.to.ch >= oldRange.to.ch) {
             //If the old placeholder is inside of the next one, we just move the cursor
-            editor.setCursor({...newRange.to});
+            editor.setCursor({ ...newRange.to });
         } else {
             this.selectMarker(placeholder);
         }
@@ -150,7 +150,7 @@ export default class SnippetManager {
             return;
 
         const from = posFromIndex(editorToCodeMirrorState(reference.editor).doc, reference.marker.from);
-        reference.editor.setSelection(from, {...from, ch: from.ch + 1});
+        reference.editor.setSelection(from, { ...from, ch: from.ch + 1 });
     }
 
     clearAllPlaceholders() {

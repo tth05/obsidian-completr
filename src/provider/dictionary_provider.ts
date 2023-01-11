@@ -1,6 +1,6 @@
-import {CompletrSettings, WordInsertionMode} from "../settings";
-import {Suggestion, SuggestionContext, SuggestionProvider} from "./provider";
-import {maybeLowerCase} from "../editor_helpers";
+import { CompletrSettings, WordInsertionMode } from "../settings";
+import { Suggestion, SuggestionContext, SuggestionProvider } from "./provider";
+import { maybeLowerCase } from "../editor_helpers";
 
 export abstract class DictionaryProvider implements SuggestionProvider {
 

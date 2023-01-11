@@ -1,8 +1,4 @@
-import {
-    Suggestion,
-    SuggestionContext,
-    SuggestionProvider
-} from "./provider";
+import { Suggestion, SuggestionContext, SuggestionProvider } from "./provider";
 import { CompletrSettings, intoCompletrPath } from "../settings";
 import { Notice, Vault } from "obsidian";
 import { SuggestionBlacklist } from "./blacklist";

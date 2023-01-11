@@ -1,7 +1,7 @@
-import {CompletrSettings, intoCompletrPath} from "../settings";
-import {DictionaryProvider} from "./dictionary_provider";
-import {Vault} from "obsidian";
-import {SuggestionBlacklist} from "./blacklist";
+import { CompletrSettings, intoCompletrPath } from "../settings";
+import { DictionaryProvider } from "./dictionary_provider";
+import { Vault } from "obsidian";
+import { SuggestionBlacklist } from "./blacklist";
 
 const WORD_LISTS_FOLDER_PATH = "wordLists";
 const NEW_LINE_REGEX = /\r?\n/;

@@ -1,7 +1,7 @@
-import {Suggestion, SuggestionProvider} from "./provider/provider";
-import {Latex} from "./provider/latex_provider";
-import {WordList} from "./provider/word_list_provider";
-import {FileScanner} from "./provider/scanner_provider";
+import { Suggestion, SuggestionProvider } from "./provider/provider";
+import { Latex } from "./provider/latex_provider";
+import { WordList } from "./provider/word_list_provider";
+import { FileScanner } from "./provider/scanner_provider";
 import {
     App,
     Editor,
@@ -13,11 +13,11 @@ import {
     TFile
 } from "obsidian";
 import SnippetManager from "./snippet_manager";
-import {CompletrSettings} from "./settings";
-import {FrontMatter} from "./provider/front_matter_provider";
-import {matchWordBackwards} from "./editor_helpers";
-import {SuggestionBlacklist} from "./provider/blacklist";
-import {Callout} from "./provider/callout_provider";
+import { CompletrSettings } from "./settings";
+import { FrontMatter } from "./provider/front_matter_provider";
+import { matchWordBackwards } from "./editor_helpers";
+import { SuggestionBlacklist } from "./provider/blacklist";
+import { Callout } from "./provider/callout_provider";
 
 const PROVIDERS: SuggestionProvider[] = [FrontMatter, Callout, Latex, FileScanner, WordList];
 
@@ -142,7 +142,7 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
                 console.log("Completr: Please enable Live Preview mode to use snippets");
             }
         } else {
-            this.context.editor.setCursor({...start, ch: start.ch + replacement.length});
+            this.context.editor.setCursor({ ...start, ch: start.ch + replacement.length });
         }
 
         this.close();
