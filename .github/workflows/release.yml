@@ -33,7 +33,7 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - Fix front matter list completion not working when indentation is present
+            - Add auto-focus option
           draft: false
           prerelease: false
       - name: Upload main.js
