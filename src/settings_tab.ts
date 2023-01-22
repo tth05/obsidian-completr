@@ -39,6 +39,16 @@ export default class CompletrSettingsTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
+            .setName("Auto focus")
+            .setDesc("Whether the popup is automatically focused once it opens.")
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.autoFocus)
+                .onChange(async val => {
+                    this.plugin.settings.autoFocus = val;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
             .setName("Minimum word length")
             .setDesc("The minimum length a word has to be, to count as a valid suggestion. This value is used by the file" +
                 " scanner and word list provider.")

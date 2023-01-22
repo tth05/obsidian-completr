@@ -30,6 +30,7 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
 
     private characterRegex: string;
     private compiledCharacterRegex: RegExp;
+    private focused: boolean = false;
 
     private readonly snippetManager: SnippetManager;
     private readonly settings: CompletrSettings;
@@ -44,6 +45,19 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
         //Remove default key registrations
         let self = this as any;
         self.scope.keys = [];
+    }
+
+    open() {
+        super.open();
+        this.focused = this.settings.autoFocus;
+
+        for(const c of (this as any).suggestions.containerEl.children)
+            c.removeClass("is-selected");
+    }
+
+    close() {
+        super.close();
+        this.focused = false;
     }
 
     getSuggestions(
@@ -150,6 +164,11 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
     }
 
     selectNextItem(dir: SelectionDirection) {
+        if (!this.focused) {
+            this.focused = true;
+            dir = dir === SelectionDirection.PREVIOUS ? dir : SelectionDirection.NONE;
+        }
+
         const self = this as any;
         // HACK: The second parameter has to be an instance of KeyboardEvent to force scrolling the selected item into
         // view
@@ -170,6 +189,10 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
         return (this as any).isOpen;
     }
 
+    isFocused(): boolean {
+        return this.focused;
+    }
+
     preventNextTrigger() {
         this.justClosed = true;
     }
@@ -185,5 +208,6 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
 
 export enum SelectionDirection {
     NEXT = 1,
-    PREVIOUS = -1
+    PREVIOUS = -1,
+    NONE = 0,
 }

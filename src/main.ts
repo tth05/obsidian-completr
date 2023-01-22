@@ -50,7 +50,7 @@ export default class CompletrPlugin extends Plugin {
         const app = this.app as any;
         app.scope.keys = [];
 
-        const isHotkeyMatch = (hotkey: any, context: KeymapContext, id: string): boolean => {
+        const isHotkeyMatch = (hotkey: any, context: KeymapContext, isBypassCommand: boolean): boolean => {
             //Copied from original isMatch function, modified to not require exactly the same modifiers for
             // completr-bypass commands. This allows triggering for example Ctrl+Enter even when
             // pressing Ctrl+Shift+Enter. The additional modifier is then passed to the editor.
@@ -62,7 +62,7 @@ export default class CompletrPlugin extends Plugin {
             */
 
             const modifiers = hotkey.modifiers, key = hotkey.key;
-            if (modifiers !== null && (id.contains("completr-bypass") ? !context.modifiers.contains(modifiers) : modifiers !== context.modifiers))
+            if (modifiers !== null && (isBypassCommand ? !context.modifiers.contains(modifiers) : modifiers !== context.modifiers))
                 return false;
             return (!key || (key === context.vkey || !(!context.key || key.toLowerCase() !== context.key.toLowerCase())))
         }
@@ -72,16 +72,16 @@ export default class CompletrPlugin extends Plugin {
             for (let bakedHotkeys = hotkeyManager.bakedHotkeys, bakedIds = hotkeyManager.bakedIds, r = 0; r < bakedHotkeys.length; r++) {
                 const hotkey = bakedHotkeys[r];
                 const id = bakedIds[r];
-                if (isHotkeyMatch(hotkey, t, id)) {
-                    const command = app.commands.findCommand(id);
-
+                const command = app.commands.findCommand(id);
+                const isBypassCommand = command && command.isBypassCommand && command.isBypassCommand();
+                if (isHotkeyMatch(hotkey, t, isBypassCommand)) {
                     // Condition taken from original function
                     if (!command || (e.repeat && !command.repeatable)) {
                         continue;
                     } else if (command.isVisible && !command.isVisible()) {
                         //HACK: Hide our commands when to popup is not visible to allow the keybinds to execute their default action.
                         continue;
-                    } else if (id.contains("completr-bypass")) {
+                    } else if (isBypassCommand) {
                         this._suggestionPopup.close();
 
                         const validMods = t.modifiers.replace(new RegExp(`${hotkey.modifiers},*`), "").split(",");
@@ -129,7 +129,7 @@ export default class CompletrPlugin extends Plugin {
                 }
             ],
             repeatable: true,
-            editorCallback: (editor) => {
+            editorCallback: (_) => {
                 this.suggestionPopup.selectNextItem(SelectionDirection.NEXT);
             },
             // @ts-ignore
@@ -145,7 +145,7 @@ export default class CompletrPlugin extends Plugin {
                 }
             ],
             repeatable: true,
-            editorCallback: (editor) => {
+            editorCallback: (_) => {
                 this.suggestionPopup.selectNextItem(SelectionDirection.PREVIOUS);
             },
             // @ts-ignore
@@ -160,10 +160,9 @@ export default class CompletrPlugin extends Plugin {
                     modifiers: []
                 }
             ],
-            editorCallback: (editor) => {
-                this.suggestionPopup.applySelectedItem();
-            },
+            editorCallback: (_) => this.suggestionPopup.applySelectedItem(),
             // @ts-ignore
+            isBypassCommand: () => !this._suggestionPopup.isFocused(),
             isVisible: () => this._suggestionPopup.isVisible(),
         });
         this.addCommand({
@@ -175,9 +174,10 @@ export default class CompletrPlugin extends Plugin {
                     modifiers: ["Ctrl"]
                 }
             ],
-            editorCallback: (editor) => {
+            editorCallback: (_) => {
             },
             // @ts-ignore
+            isBypassCommand: () => true,
             isVisible: () => this._suggestionPopup.isVisible(),
         });
         this.addCommand({
@@ -189,9 +189,9 @@ export default class CompletrPlugin extends Plugin {
                     modifiers: ["Ctrl"]
                 }
             ],
-            editorCallback: (editor) => {
-            },
+            editorCallback: (_) => {},
             // @ts-ignore
+            isBypassCommand: () => true,
             isVisible: () => this._suggestionPopup.isVisible(),
         });
         this.addCommand({
@@ -209,6 +209,7 @@ export default class CompletrPlugin extends Plugin {
                 (this._suggestionPopup as any).trigger(editor, this.app.workspace.getActiveFile(), true);
             },
             // @ts-ignore
+            isBypassCommand: () => !this._suggestionPopup.isFocused(),
             isVisible: () => this._suggestionPopup.isVisible(),
         });
         this.addCommand({
@@ -220,9 +221,7 @@ export default class CompletrPlugin extends Plugin {
                     modifiers: []
                 }
             ],
-            editorCallback: (editor) => {
-                this.suggestionPopup.close();
-            },
+            editorCallback: (_) => this.suggestionPopup.close(),
             // @ts-ignore
             isVisible: () => this._suggestionPopup.isVisible(),
         });
@@ -235,7 +234,7 @@ export default class CompletrPlugin extends Plugin {
                     modifiers: []
                 }
             ],
-            editorCallback: (editor, view) => {
+            editorCallback: (editor, _) => {
                 const placeholder = this.snippetManager.placeholderAtPos(editor.getCursor());
                 //Sanity check
                 if (!placeholder)
@@ -259,6 +258,28 @@ export default class CompletrPlugin extends Plugin {
                 const placeholder = this.snippetManager.placeholderAtPos(view.editor.getCursor());
                 return placeholder != null;
             },
+        });
+
+        // Here are some notes about this command and the isBypassCommand function:
+        // - This command is registered last so that other hotkeys can be bound to tab without being overridden
+        // - The isBypassCommand function exists, because obsidian has editor suggest related event handlers for Enter,
+        //   Tab, ArrowUp and ArrowDown which completely prevent those keys from getting to the editor while an editor
+        //   suggest is open. This function bypasses that using the custom hotkey hook above which will dispatch an
+        //   event to the editor if the isBypassCommand function returns true.
+        // - All of this restores the default behavior for all keys while the suggestion popup is open, but not focused.
+        this.addCommand({
+            id: 'completr-fake-tab',
+            name: 'Press Tab',
+            hotkeys: [
+                {
+                    key: "Tab",
+                    modifiers: []
+                }
+            ],
+            editorCallback: (_) => {},
+            // @ts-ignore
+            isBypassCommand: () => true,
+            isVisible: () => this._suggestionPopup.isVisible(),
         });
     }
 
@@ -323,7 +344,8 @@ class CursorActivityListener {
 
     private readonly handleCursorActivity = (cursor: EditorPosition) => {
         // This prevents the popup from opening when switching to the previous line
-        if (this.lastCursorLine == cursor.line + 1)
+        const didChangeLine = this.lastCursorLine != cursor.line;
+        if (didChangeLine)
             this.suggestionPopup.preventNextTrigger();
         this.lastCursorLine = cursor.line;
 
@@ -335,7 +357,8 @@ class CursorActivityListener {
         // Prevents the suggestion popup from flickering when typing
         if (this.cursorTriggeredByChange) {
             this.cursorTriggeredByChange = false;
-            return;
+            if (!didChangeLine)
+                return;
         }
 
         this.suggestionPopup.close();

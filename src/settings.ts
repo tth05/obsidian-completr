@@ -9,6 +9,7 @@ export const enum WordInsertionMode {
 export interface CompletrSettings {
     characterRegex: string,
     maxLookBackDistance: number,
+    autoFocus: boolean,
     minWordLength: number,
     minWordTriggerLength: number,
     wordInsertionMode: WordInsertionMode,
@@ -29,6 +30,7 @@ export interface CompletrSettings {
 export const DEFAULT_SETTINGS: CompletrSettings = {
     characterRegex: "a-zA-ZöäüÖÄÜß",
     maxLookBackDistance: 50,
+    autoFocus: true,
     minWordLength: 2,
     minWordTriggerLength: 3,
     wordInsertionMode: WordInsertionMode.IGNORE_CASE_REPLACE,
