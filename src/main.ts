@@ -73,7 +73,7 @@ export default class CompletrPlugin extends Plugin {
                 const hotkey = bakedHotkeys[r];
                 const id = bakedIds[r];
                 const command = app.commands.findCommand(id);
-                const isBypassCommand = command && command.isBypassCommand && command.isBypassCommand();
+                const isBypassCommand = command?.isBypassCommand?.();
                 if (isHotkeyMatch(hotkey, t, isBypassCommand)) {
                     // Condition taken from original function
                     if (!command || (e.repeat && !command.repeatable)) {
@@ -189,7 +189,8 @@ export default class CompletrPlugin extends Plugin {
                     modifiers: ["Ctrl"]
                 }
             ],
-            editorCallback: (_) => {},
+            editorCallback: (_) => {
+            },
             // @ts-ignore
             isBypassCommand: () => true,
             isVisible: () => this._suggestionPopup.isVisible(),
@@ -269,14 +270,60 @@ export default class CompletrPlugin extends Plugin {
         // - All of this restores the default behavior for all keys while the suggestion popup is open, but not focused.
         this.addCommand({
             id: 'completr-fake-tab',
-            name: 'Press Tab',
+            name: '(internal)',
             hotkeys: [
                 {
                     key: "Tab",
                     modifiers: []
                 }
             ],
-            editorCallback: (_) => {},
+            editorCallback: (_) => {
+            },
+            // @ts-ignore
+            isBypassCommand: () => true,
+            isVisible: () => this._suggestionPopup.isVisible(),
+        });
+        this.addCommand({
+            id: 'completr-fake-enter',
+            name: '(internal)',
+            hotkeys: [
+                {
+                    key: "Enter",
+                    modifiers: []
+                }
+            ],
+            editorCallback: (_) => {
+            },
+            // @ts-ignore
+            isBypassCommand: () => true,
+            isVisible: () => this._suggestionPopup.isVisible(),
+        });
+        this.addCommand({
+            id: 'completr-fake-arrow-up',
+            name: '(internal)',
+            hotkeys: [
+                {
+                    key: "ArrowUp",
+                    modifiers: []
+                }
+            ],
+            editorCallback: (_) => {
+            },
+            // @ts-ignore
+            isBypassCommand: () => true,
+            isVisible: () => this._suggestionPopup.isVisible(),
+        });
+        this.addCommand({
+            id: 'completr-fake-arrow-down',
+            name: '(internal)',
+            hotkeys: [
+                {
+                    key: "ArrowDown",
+                    modifiers: []
+                }
+            ],
+            editorCallback: (_) => {
+            },
             // @ts-ignore
             isBypassCommand: () => true,
             isVisible: () => this._suggestionPopup.isVisible(),
