@@ -113,8 +113,8 @@ export default class CompletrPlugin extends Plugin {
                 }
             ],
             editorCallback: (editor) => {
-                //This is the same function that is called by obsidian when you type a character
-                (this._suggestionPopup as any).trigger(editor, this.app.workspace.getActiveFile(), true);
+                // This is the same function that is called by obsidian when you type a character
+                (this._suggestionPopup as any).trigger(editor, /* Passing null here is a signal that this was triggered manually by the user */ null, true);
             },
             // @ts-ignore
             isVisible: () => !this._suggestionPopup.isVisible()

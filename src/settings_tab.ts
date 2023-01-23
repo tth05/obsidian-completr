@@ -49,6 +49,16 @@ export default class CompletrSettingsTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
+            .setName("Auto trigger")
+            .setDesc("Whether the popup opens automatically when typing.")
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.autoTrigger)
+                .onChange(async val => {
+                    this.plugin.settings.autoTrigger = val;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
             .setName("Minimum word length")
             .setDesc("The minimum length a word has to be, to count as a valid suggestion. This value is used by the file" +
                 " scanner and word list provider.")

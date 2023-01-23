@@ -51,8 +51,10 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
         super.open();
         this.focused = this.settings.autoFocus;
 
-        for(const c of (this as any).suggestions.containerEl.children)
-            c.removeClass("is-selected");
+        if (!this.focused) {
+            for (const c of (this as any).suggestions.containerEl.children)
+                c.removeClass("is-selected");
+        }
     }
 
     close() {
@@ -95,8 +97,17 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
     }
 
     onTrigger(cursor: EditorPosition, editor: Editor, file: TFile): EditorSuggestTriggerInfo | null {
+        return this.internalOnTrigger(editor, cursor, !file);
+    }
+
+    private internalOnTrigger(editor: Editor, cursor: EditorPosition, manualTrigger: boolean): EditorSuggestTriggerInfo | null {
         if (this.justClosed) {
             this.justClosed = false;
+            return null;
+        }
+
+        if (!this.settings.autoTrigger && !manualTrigger) {
+            this.close();
             return null;
         }
 
