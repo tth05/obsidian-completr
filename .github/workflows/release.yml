@@ -33,7 +33,8 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - Add auto-focus option
+            - Add auto-trigger option
+            - Bug fixes
           draft: false
           prerelease: false
       - name: Upload main.js
