@@ -1,8 +1,9 @@
 import { App, ButtonComponent, Modal, Notice, PluginSettingTab, Setting } from "obsidian";
+import {isInstalled as isCalloutManagerInstalled} from "obsidian-callout-manager";
 import CompletrPlugin from "./main";
 import { FileScanner } from "./provider/scanner_provider";
 import { WordList } from "./provider/word_list_provider";
-import { CompletrSettings, WordInsertionMode } from "./settings";
+import { CalloutProviderSource, CompletrSettings, WordInsertionMode } from "./settings";
 import { TextDecoder } from "util";
 import { detect } from "jschardet";
 
@@ -328,6 +329,24 @@ export default class CompletrSettingsTab extends PluginSettingTab {
             .setHeading();
 
         this.createEnabledSetting("calloutProviderEnabled", "Whether or not the callout provider is enabled", containerEl);
+        new Setting(containerEl)
+            .setName("Source")
+            .setDesc("Where callout suggestions come from.")
+            .addDropdown(component => {
+                component.addOption("Completr", CalloutProviderSource.COMPLETR)
+                    .setValue(CalloutProviderSource.COMPLETR) // Default option.
+                    .onChange(async (value) => {
+                        this.plugin.settings.calloutProviderSource = value as CalloutProviderSource;
+                        await this.plugin.saveSettings();
+                    });
+
+                if (isCalloutManagerInstalled()) {
+                    component.addOption("Callout Manager", CalloutProviderSource.CALLOUT_MANAGER);
+                    if (this.plugin.settings.calloutProviderSource === CalloutProviderSource.CALLOUT_MANAGER) {
+                        component.setValue(this.plugin.settings.calloutProviderSource);
+                    }
+                }
+            })
     }
 
     private async reloadWords() {

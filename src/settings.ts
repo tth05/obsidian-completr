@@ -6,6 +6,11 @@ export const enum WordInsertionMode {
     IGNORE_CASE_APPEND = "Ignore-Case & Append"
 }
 
+export const enum CalloutProviderSource {
+    COMPLETR = "Completr",
+    CALLOUT_MANAGER = "Callout Manager",
+}
+
 export interface CompletrSettings {
     characterRegex: string,
     maxLookBackDistance: number,
@@ -26,6 +31,7 @@ export interface CompletrSettings {
     frontMatterTagAppendSuffix: boolean,
     frontMatterIgnoreCase: boolean,
     calloutProviderEnabled: boolean,
+    calloutProviderSource: CalloutProviderSource,
 }
 
 export const DEFAULT_SETTINGS: CompletrSettings = {
@@ -48,6 +54,7 @@ export const DEFAULT_SETTINGS: CompletrSettings = {
     frontMatterTagAppendSuffix: true,
     frontMatterIgnoreCase: true,
     calloutProviderEnabled: true,
+    calloutProviderSource: CalloutProviderSource.COMPLETR,
 }
 
 export function intoCompletrPath(vault: Vault, ...path: string[]): string {
