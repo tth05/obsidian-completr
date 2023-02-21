@@ -120,8 +120,14 @@ class CalloutSuggestionProvider implements SuggestionProvider {
     protected async loadSuggestionsUsingCalloutManager() {
         const api = await getApi();
 
-        this.loadedSuggestions = api.getCallouts()
-            .map(({id, icon, color}) => newSuggestion(id, id, icon, `rgb(${color})`))
+        this.loadedSuggestions = Array.from(api.getCallouts())
+            .sort(({id: a}, {id: b}) => a.localeCompare(b))
+            .map(callout => newSuggestion(
+                api.getTitle(callout),
+                callout.id,
+                callout.icon,
+                `rgb(${callout.color})`,
+            ));
     }
 }
 
