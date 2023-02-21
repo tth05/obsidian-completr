@@ -1,7 +1,9 @@
+import { getApi } from "obsidian-callout-manager";
 import { Suggestion, SuggestionContext, SuggestionProvider } from "./provider";
-import { CompletrSettings, intoCompletrPath } from "../settings";
+import { CalloutProviderSource, CompletrSettings, intoCompletrPath } from "../settings";
 import { Notice, Vault } from "obsidian";
 import { SuggestionBlacklist } from "./blacklist";
+import CompletrPlugin from "src/main";
 
 const CALLOUT_SUGGESTIONS_FILE = "callout_suggestions.json";
 
@@ -13,6 +15,7 @@ class CalloutSuggestionProvider implements SuggestionProvider {
     blocksAllOtherProviders = true;
 
     private loadedSuggestions: Suggestion[] = [];
+    private boundLoadSuggestionsUsingCalloutManager = this.loadSuggestionsUsingCalloutManager.bind(this);
 
     getSuggestions(context: SuggestionContext, settings: CompletrSettings): Suggestion[] {
         if (!settings.calloutProviderEnabled)
@@ -74,7 +77,25 @@ class CalloutSuggestionProvider implements SuggestionProvider {
             });
     }
 
-    async loadSuggestions(vault: Vault) {
+    async loadSuggestions(vault: Vault, plugin: CompletrPlugin) {
+        const source = plugin.settings.calloutProviderSource;
+
+        // Callout Manager
+        const calloutManagerApi = await getApi(plugin);
+        if (calloutManagerApi != null) {
+            calloutManagerApi.off('change', this.boundLoadSuggestionsUsingCalloutManager);
+            if (source === CalloutProviderSource.CALLOUT_MANAGER) {
+                calloutManagerApi.on('change', this.boundLoadSuggestionsUsingCalloutManager);
+                this.loadSuggestionsUsingCalloutManager();
+                return;
+            }
+        }
+
+        // Completr.
+        await this.loadSuggestionsUsingCompletr(vault);
+    }
+
+    protected async loadSuggestionsUsingCompletr(vault: Vault) {
         const path = intoCompletrPath(vault, CALLOUT_SUGGESTIONS_FILE);
 
         if (!(await vault.adapter.exists(path))) {
@@ -94,6 +115,13 @@ class CalloutSuggestionProvider implements SuggestionProvider {
         }
 
         this.loadedSuggestions = SuggestionBlacklist.filter(this.loadedSuggestions);
+    }
+
+    protected async loadSuggestionsUsingCalloutManager() {
+        const api = await getApi();
+
+        this.loadedSuggestions = api.getCallouts()
+            .map(({id, icon, color}) => newSuggestion(id, id, icon, `rgb(${color})`))
     }
 }
 

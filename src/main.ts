@@ -342,7 +342,7 @@ export default class CompletrPlugin extends Plugin {
             WordList.loadFromFiles(this.app.vault, this.settings);
             FileScanner.loadData(this.app.vault);
             Latex.loadCommands(this.app.vault);
-            Callout.loadSuggestions(this.app.vault);
+            Callout.loadSuggestions(this.app.vault, this);
         });
     }
 
