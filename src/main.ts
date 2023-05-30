@@ -45,7 +45,7 @@ export default class CompletrPlugin extends Plugin {
     }
 
     private setupCommands() {
-        //This replaces the default handler for commands. This is needed because the default handler always consumes
+        // This replaces the default handler for commands. This is needed because the default handler always consumes
         // the event if the command exists.
         const app = this.app as any;
         app.scope.keys = [];

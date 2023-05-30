@@ -86,7 +86,7 @@ class CalloutSuggestionProvider implements SuggestionProvider {
             calloutManagerApi.off('change', this.boundLoadSuggestionsUsingCalloutManager);
             if (source === CalloutProviderSource.CALLOUT_MANAGER) {
                 calloutManagerApi.on('change', this.boundLoadSuggestionsUsingCalloutManager);
-                this.loadSuggestionsUsingCalloutManager();
+                await this.loadSuggestionsUsingCalloutManager();
                 return;
             }
         }
