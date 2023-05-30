@@ -33,8 +33,8 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           body: |
-            - Add auto-trigger option
-            - Bug fixes
+            - Integration for the callout manager plugin by @eth-p
+            - The editor suggest is now registered at a later point to avoid conflicts with other plugins
           draft: false
           prerelease: false
       - name: Upload main.js
