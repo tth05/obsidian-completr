@@ -15,7 +15,7 @@ import {
 import SnippetManager from "./snippet_manager";
 import { CompletrSettings } from "./settings";
 import { FrontMatter } from "./provider/front_matter_provider";
-import { matchWordBackwards } from "./editor_helpers";
+import {matchWordBackwards} from "./editor_helpers";
 import { SuggestionBlacklist } from "./provider/blacklist";
 import { Callout } from "./provider/callout_provider";
 
@@ -194,6 +194,16 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
     applySelectedItem() {
         const self = this as any;
         self.suggestions.useSelectedItem();
+    }
+
+    postApplySelectedItem(editor: Editor) {
+        if (!this.settings.insertPeriodAfterSpaces) {
+            return
+        }
+        
+        const cursor = editor.getCursor()
+        editor.replaceRange(" ", cursor)
+        editor.setCursor({line: cursor.line, ch: cursor.ch + 1})
     }
 
     isVisible(): boolean {

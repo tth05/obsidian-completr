@@ -116,6 +116,26 @@ export default class CompletrSettingsTab extends PluginSettingTab {
                     this.plugin.settings.ignoreDiacriticsWhenFiltering = val;
                     await this.plugin.saveSettings();
                 }));
+        
+        new Setting(containerEl)
+            .setName("Add space after completed word")
+            .setDesc("When enabled, a space will be added after a word has been completed.")
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.insertSpaceAfterComplete)
+                .onChange(async val => {
+                    this.plugin.settings.insertSpaceAfterComplete = val;
+                    await this.plugin.saveSettings();
+                }));
+        
+        new Setting(containerEl)
+            .setName("Insert period after double space")
+            .setDesc("When enabled, a period will be inserted automatically after a word if space is pressed twice after.")
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.insertPeriodAfterSpaces)
+                .onChange(async val => {
+                    this.plugin.settings.insertPeriodAfterSpaces = val;
+                    await this.plugin.saveSettings();
+                }));
 
         new Setting(containerEl)
             .setName("Latex provider")
