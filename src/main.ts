@@ -160,7 +160,10 @@ export default class CompletrPlugin extends Plugin {
                     modifiers: []
                 }
             ],
-            editorCallback: (_) => this.suggestionPopup.applySelectedItem(),
+            editorCallback: (editor) => {
+                this.suggestionPopup.applySelectedItem();
+                this.suggestionPopup.postApplySelectedItem(editor);
+            },
             // @ts-ignore
             isBypassCommand: () => !this._suggestionPopup.isFocused(),
             isVisible: () => this._suggestionPopup.isVisible(),
