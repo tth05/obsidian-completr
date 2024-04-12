@@ -129,7 +129,7 @@ export default class CompletrSettingsTab extends PluginSettingTab {
         
         new Setting(containerEl)
             .setName("Insert period after double space")
-            .setDesc("When enabled, a period will be inserted automatically after a word if space is pressed twice after.")
+            .setDesc("When enabled, a period is added after a completed word if a space is added after an automatic space, via the option above.")
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.insertPeriodAfterSpaces)
                 .onChange(async val => {

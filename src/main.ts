@@ -12,6 +12,7 @@ import { FrontMatter } from "./provider/front_matter_provider";
 import { Latex } from "./provider/latex_provider";
 import { Callout } from "./provider/callout_provider";
 import { SuggestionBlacklist } from "./provider/blacklist";
+import PeriodInserter from "./period_inserter";
 
 export default class CompletrPlugin extends Plugin {
 
@@ -19,12 +20,14 @@ export default class CompletrPlugin extends Plugin {
 
     private snippetManager: SnippetManager;
     private _suggestionPopup: SuggestionPopup;
+    private _periodInserter: PeriodInserter;
 
     async onload() {
         await this.loadSettings();
 
         this.snippetManager = new SnippetManager();
         this._suggestionPopup = new SuggestionPopup(this.app, this.settings, this.snippetManager);
+        this._periodInserter = new PeriodInserter();
 
         this.registerEditorSuggest(this._suggestionPopup);
 
@@ -33,7 +36,7 @@ export default class CompletrPlugin extends Plugin {
         this.app.workspace.onLayoutReady(() => FrontMatter.loadYAMLKeyCompletions(this.app.metadataCache, this.app.vault.getMarkdownFiles()));
 
         this.registerEditorExtension(markerStateField);
-        this.registerEditorExtension(EditorView.updateListener.of(new CursorActivityListener(this.snippetManager, this._suggestionPopup).listener));
+        this.registerEditorExtension(EditorView.updateListener.of(new CursorActivityListener(this.snippetManager, this._suggestionPopup, this._periodInserter).listener));
 
         this.addSettingTab(new CompletrSettingsTab(this.app, this));
 
@@ -163,10 +166,25 @@ export default class CompletrPlugin extends Plugin {
             editorCallback: (editor) => {
                 this.suggestionPopup.applySelectedItem();
                 this.suggestionPopup.postApplySelectedItem(editor);
+                this._periodInserter.allowInsertPeriod();
             },
             // @ts-ignore
             isBypassCommand: () => !this._suggestionPopup.isFocused(),
             isVisible: () => this._suggestionPopup.isVisible(),
+        });
+        this.addCommand({
+            id: 'completr-space-period-insert',
+            name: 'Add period after word',
+            hotkeys: [
+                {
+                    key: " ",
+                    modifiers: []
+                }
+            ],
+            editorCallback: (editor) => this._periodInserter.attemptInsert(editor),
+            // @ts-ignore
+            isBypassCommand: () => false,
+            isVisible: () => this.settings.insertPeriodAfterSpaces && this._periodInserter.canInsertPeriod()
         });
         this.addCommand({
             id: 'completr-bypass-enter-key',
@@ -369,13 +387,15 @@ class CursorActivityListener {
 
     private readonly snippetManager: SnippetManager;
     private readonly suggestionPopup: SuggestionPopup;
+    private readonly periodInserter: PeriodInserter;
 
     private cursorTriggeredByChange = false;
     private lastCursorLine = -1;
 
-    constructor(snippetManager: SnippetManager, suggestionPopup: SuggestionPopup) {
+    constructor(snippetManager: SnippetManager, suggestionPopup: SuggestionPopup, periodInserter: PeriodInserter) {
         this.snippetManager = snippetManager;
         this.suggestionPopup = suggestionPopup;
+        this.periodInserter = periodInserter;
     }
 
     readonly listener = (update: ViewUpdate) => {
@@ -393,6 +413,8 @@ class CursorActivityListener {
     };
 
     private readonly handleCursorActivity = (cursor: EditorPosition) => {
+        this.periodInserter.cancelInsertPeriod()
+        
         // This prevents the popup from opening when switching to the previous line
         const didChangeLine = this.lastCursorLine != cursor.line;
         if (didChangeLine)

@@ -197,7 +197,7 @@ export default class SuggestionPopup extends EditorSuggest<Suggestion> {
     }
 
     postApplySelectedItem(editor: Editor) {
-        if (!this.settings.insertPeriodAfterSpaces) {
+        if (!this.settings.insertSpaceAfterComplete) {
             return
         }
         
