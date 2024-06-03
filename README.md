@@ -89,8 +89,9 @@ Browse the community plugins list and search for `Completr`.
 
 ## Looking for word lists?
 
-- https://sourceforge.net/projects/germandict/
-- https://github.com/kpym/FrequencyDictionaries
+- [German](https://sourceforge.net/projects/germandict/)
+- [French, English and Bulgarian](https://github.com/kpym/FrequencyDictionaries)
+- [Spanish](https://github.com/mateopolci/top10kSpanishWordsByFrequency)
 
 ## Development
 
