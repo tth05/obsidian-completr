@@ -6,15 +6,29 @@ import { SuggestionBlacklist } from "./blacklist";
 import CompletrPlugin from "src/main";
 
 const CALLOUT_SUGGESTIONS_FILE = "callout_suggestions.json";
+const CALLOUT_MANAGER_DATA_FILE = "data.json";
+const CALLOUT_MANAGER_PLUGIN_ID = "callout-manager";
 
 const BLOCKQUOTE_PREFIX_REGEX = /^(?:[ \t]*>[ \t]*)+/;
 const CALLOUT_HEADER_REGEX = /^(\[!?([^\]]*)\])([+-]?)([ \t]*)(.*)$/d; // [!TYPE]- TITLE
 const CALLOUT_HEADER_PARTIAL_REGEX = /^(\[!?([^\]]*))$/d;           // [!TYPE
 
+interface CalloutManagerSettingsChange {
+    changes?: Record<string, unknown>;
+}
+
+interface CalloutManagerPluginData {
+    callouts?: {
+        custom?: string[];
+        settings?: Record<string, CalloutManagerSettingsChange[]>;
+    };
+}
+
 class CalloutSuggestionProvider implements SuggestionProvider {
     blocksAllOtherProviders = true;
 
     private loadedSuggestions: Suggestion[] = [];
+    private lastVault?: Vault;
     private boundLoadSuggestionsUsingCalloutManager = this.loadSuggestionsUsingCalloutManager.bind(this);
 
     getSuggestions(context: SuggestionContext, settings: CompletrSettings): Suggestion[] {
@@ -78,6 +92,7 @@ class CalloutSuggestionProvider implements SuggestionProvider {
     }
 
     async loadSuggestions(vault: Vault, plugin: CompletrPlugin) {
+        this.lastVault = vault;
         const source = plugin.settings.calloutProviderSource;
 
         // Callout Manager
@@ -119,19 +134,121 @@ class CalloutSuggestionProvider implements SuggestionProvider {
 
     protected async loadSuggestionsUsingCalloutManager() {
         const api = await getApi();
+        if (api == null) {
+            if (this.lastVault != null) {
+                await this.loadSuggestionsUsingCompletr(this.lastVault);
+            } else {
+                this.loadedSuggestions = [];
+            }
+            return;
+        }
 
-        this.loadedSuggestions = Array.from(api.getCallouts())
+        const suggestions = Array.from(api.getCallouts())
             .sort(({id: a}, {id: b}) => a.localeCompare(b))
             .map(callout => newSuggestion(
                 api.getTitle(callout),
                 callout.id,
                 callout.icon,
-                `rgb(${callout.color})`,
+                callout.color == null ? undefined : `rgb(${callout.color})`,
             ));
+
+        const customSuggestions = this.lastVault == null
+            ? []
+            : await loadCustomCalloutSuggestions(this.lastVault, suggestions);
+
+        this.loadedSuggestions = SuggestionBlacklist.filter(
+            mergeSuggestionsByReplacement([
+                ...suggestions,
+                ...customSuggestions,
+            ])
+        );
     }
 }
 
 export const Callout = new CalloutSuggestionProvider();
+
+function intoCalloutManagerPath(vault: Vault, ...path: string[]): string {
+    return `${vault.configDir}/plugins/${CALLOUT_MANAGER_PLUGIN_ID}/` + path.join("/");
+}
+
+async function loadCustomCalloutSuggestions(vault: Vault, existingSuggestions: Suggestion[]): Promise<Suggestion[]> {
+    const path = intoCalloutManagerPath(vault, CALLOUT_MANAGER_DATA_FILE);
+    if (!(await vault.adapter.exists(path)))
+        return [];
+
+    try {
+        const existingIds = new Set(existingSuggestions.map(suggestion => suggestion.replacement.toLowerCase()));
+        const data = JSON.parse(await vault.adapter.read(path)) as CalloutManagerPluginData;
+        return parseCustomCalloutSuggestions(data, existingIds);
+    } catch (error) {
+        console.warn("Completr was unable to read Callout Manager custom callouts:", error);
+        return [];
+    }
+}
+
+function parseCustomCalloutSuggestions(data: CalloutManagerPluginData, existingIds: Set<string>): Suggestion[] {
+    const callouts = data.callouts ?? {};
+    const settings = callouts.settings ?? {};
+    const customIds = new Set(callouts.custom ?? []);
+
+    for (const [id, changeSet] of Object.entries(settings)) {
+        if (changeSet.length > 0 && !existingIds.has(id.toLowerCase()))
+            customIds.add(id);
+    }
+
+    return Array.from(customIds)
+        .filter((id): id is string => typeof id === "string" && id.length > 0 && !existingIds.has(id.toLowerCase()))
+        .sort((a, b) => a.localeCompare(b))
+        .map(id => {
+            const changes = getLatestCalloutChanges(settings[id]);
+            return newSuggestion(
+                titleCaseCalloutId(id),
+                id,
+                typeof changes.icon === "string" ? changes.icon : undefined,
+                typeof changes.color === "string" ? `rgb(${changes.color})` : undefined,
+            );
+        });
+}
+
+function getLatestCalloutChanges(settings?: CalloutManagerSettingsChange[]): Record<string, unknown> {
+    const changes: Record<string, unknown> = {};
+    if (!Array.isArray(settings))
+        return changes;
+
+    for (const setting of settings) {
+        if (setting.changes == null || typeof setting.changes !== "object")
+            continue;
+
+        for (const [key, value] of Object.entries(setting.changes)) {
+            if (value !== undefined)
+                changes[key] = value;
+        }
+    }
+
+    return changes;
+}
+
+function mergeSuggestionsByReplacement(suggestions: Suggestion[]): Suggestion[] {
+    const deduped = new Map<string, Suggestion>();
+
+    for (const suggestion of suggestions) {
+        const key = suggestion.replacement.toLowerCase();
+        if (!deduped.has(key))
+            deduped.set(key, suggestion);
+    }
+
+    return Array.from(deduped.values());
+}
+
+function titleCaseCalloutId(id: string): string {
+    const matches = /^(.)(.*)$/u.exec(id);
+    if (matches == null)
+        return id;
+
+    const firstChar = matches[1].toLocaleUpperCase();
+    const remainingChars = matches[2].toLocaleLowerCase().replace(/-+/g, " ");
+    return `${firstChar}${remainingChars}`;
+}
 
 /*
  * Ensures there is at least one character worth of whitespace at the end of the provided string.
