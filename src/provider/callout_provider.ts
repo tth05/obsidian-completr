@@ -389,7 +389,7 @@ export async function loadSuggestionsFromFile(vault: Vault, file: string, opts?:
     return suggestions;
 }
 
-function newSuggestion(name: string, replacement: string, icon: string, color: string) {
+function newSuggestion(name: string, replacement: string, icon?: string, color?: string) {
     return new Suggestion(name, replacement, undefined, undefined, {
         icon,
         color,
