@@ -204,8 +204,8 @@ function parseCustomCalloutSuggestions(data: CalloutManagerPluginData, existingI
             return newSuggestion(
                 titleCaseCalloutId(id),
                 id,
-                typeof changes.icon === "string" ? changes.icon : undefined,
-                typeof changes.color === "string" ? `rgb(${changes.color})` : undefined,
+                typeof changes.icon === "string" ? changes.icon : "",
+                typeof changes.color === "string" ? `rgb(${changes.color})` : "",
             );
         });
 }
