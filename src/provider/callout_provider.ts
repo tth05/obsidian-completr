@@ -192,7 +192,7 @@ function parseCustomCalloutSuggestions(data: CalloutManagerPluginData, existingI
     const customIds = new Set(callouts.custom ?? []);
 
     for (const [id, changeSet] of Object.entries(settings)) {
-        if (changeSet.length > 0 && !existingIds.has(id.toLowerCase()))
+        if (Array.isArray(changeSet) && changeSet.length > 0 && !existingIds.has(id.toLowerCase()))
             customIds.add(id);
     }
 
