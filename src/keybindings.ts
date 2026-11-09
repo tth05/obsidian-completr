@@ -1,7 +1,7 @@
 import { Prec } from "@codemirror/state";
 import { type EditorView, keymap } from "@codemirror/view";
 import { around } from "monkey-around";
-import { type Command, type Editor, type Hotkey, Notice } from "obsidian";
+import { type Command, type Editor, type Hotkey, type KeymapContext, type Modifier, Notice, Platform } from "obsidian";
 import type CompletrPlugin from "./main.ts";
 import { SelectionDirection } from "./popup.ts";
 import { isInPlaceholder, jumpToNextPlaceholder } from "./snippets.ts";
@@ -20,6 +20,11 @@ import { isInPlaceholder, jumpToNextPlaceholder } from "./snippets.ts";
  * 2. While any editor suggest is open, Obsidian's editor swallows ArrowUp/ArrowDown/Enter/Tab. If Completr's popup is
  *    open but none of its commands handled the key, the user wants the editor's default action (e.g. a new line).
  *    -> A high-precedence CodeMirror keymap closes the popup and lets the key continue to the next handlers.
+ *
+ * 3. Obsidian runs the first command whose hotkey matches, and its own commands come first. Completr's defaults
+ *    Ctrl+Enter and Ctrl+Tab are also bound to core commands, so the bypass commands would never run. -> While the popup
+ *    is open, its keymap scope is consulted before the global hotkeys. A handler there runs Completr's commands for
+ *    their configured hotkeys first.
  */
 
 interface CompletrCommand extends Command {
@@ -47,6 +52,19 @@ function editorCommand(
             return true;
         },
     };
+}
+
+function compileModifiers(modifiers: Modifier[]): string {
+    return modifiers
+        .map((m) => (m === "Mod" ? (Platform.isMacOS ? "Meta" : "Ctrl") : m))
+        .sort()
+        .join(",");
+}
+
+/** Same matching rules as Obsidian's hotkey manager. */
+function isHotkeyMatch(hotkey: Hotkey, ctx: KeymapContext): boolean {
+    if (compileModifiers(hotkey.modifiers) !== ctx.modifiers) return false;
+    return hotkey.key === ctx.vkey || (!!ctx.key && hotkey.key.toLowerCase() === ctx.key.toLowerCase());
 }
 
 /** Closes the popup and sends a key to the editor, without the modifiers that triggered the bypass command. */
@@ -145,6 +163,22 @@ export function registerCommands(plugin: CompletrPlugin) {
             await plugin.saveSettings();
             new Notice(`Completr: Automatic popup ${plugin.settings.autoTrigger ? "enabled" : "disabled"}`);
         },
+    });
+
+    // See (3) above
+    popup.scope.register(null, null, (evt, ctx) => {
+        const editor = plugin.app.workspace.activeEditor?.editor;
+        if (!editor) return;
+        const { hotkeyManager } = plugin.app;
+        for (const command of commands) {
+            if (evt.repeat && !command.repeatable) continue;
+            const hotkeys = hotkeyManager.getHotkeys(command.id) ?? hotkeyManager.getDefaultHotkeys(command.id) ?? [];
+            if (!hotkeys.some((h) => isHotkeyMatch(h, ctx))) continue;
+            // Runs the command if it is applicable, otherwise try the next one
+            if (command.editorCheckCallback(false, editor)) return false;
+        }
+        // Not handled: continue with the global hotkeys and the editor
+        return undefined;
     });
 
     // See (1) above. Note: addCommand already prefixed the ids with the plugin id.

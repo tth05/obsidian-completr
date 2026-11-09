@@ -9,6 +9,11 @@ declare module "obsidian" {
     interface App {
         /** Opens a vault relative path with the system's default application. */
         openWithDefaultApp(path: string): void;
+        hotkeyManager: {
+            /** The user's hotkeys for a command, undefined if they weren't customized. */
+            getHotkeys(commandId: string): Hotkey[] | undefined;
+            getDefaultHotkeys(commandId: string): Hotkey[] | undefined;
+        };
         commands: {
             /** Note: Always returns true if the command exists, even if its checkCallback returned false. */
             executeCommand(command: Command, evt?: Event): boolean;
