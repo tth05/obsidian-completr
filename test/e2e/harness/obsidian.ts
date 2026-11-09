@@ -141,7 +141,10 @@ export class Obsidian {
         await build({ production: false, outdir: pluginDir });
         const obsidianDir = join(vaultDir, ".obsidian");
         writeFileSync(join(obsidianDir, "community-plugins.json"), JSON.stringify([PLUGIN_ID]));
-        writeFileSync(join(obsidianDir, "app.json"), JSON.stringify({ livePreview: true, promptDelete: false }));
+        writeFileSync(
+            join(obsidianDir, "app.json"),
+            JSON.stringify({ livePreview: true, promptDelete: false, settingsPopoutWindow: false }),
+        );
 
         const asar = findNewestAsar();
         if (asar) await Bun.write(join(profileDir, asar.split(/[\\/]/).pop()!), Bun.file(asar));
@@ -201,7 +204,7 @@ export class Obsidian {
             // leave its focus-trapping keymap scope active.
             for (
                 let i = 0;
-                i < 5 && (await cdp.evaluate<boolean>(`!!document.querySelector(".modal-container")`));
+                i < 5 && (await cdp.evaluate<boolean>(`!!document.querySelector(".modal-container, body > .modal")`));
                 i++
             ) {
                 await obsidian.press("Escape");

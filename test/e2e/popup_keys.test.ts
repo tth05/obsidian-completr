@@ -345,12 +345,19 @@ describe("vim mode", () => {
 });
 
 describe("blacklist", () => {
-    test("Shift+D blacklists the selected suggestion", async () => {
+    test("a capital D is typed even while the popup is focused", async () => {
+        await openXylPopup();
+        await obsidian.type("D");
+        await expectText(obsidian, "Some text\nxylD<|>");
+        expect((await obsidian.readVaultFile(BLACKLIST_PATH)) ?? "").not.toContain("xylem");
+    });
+
+    test("Mod+Shift+D blacklists the selected suggestion", async () => {
         try {
             await openNote(obsidian, "Some text\n<|>");
             await obsidian.type("dan");
             await waitForItems(obsidian, DAN_WORDS);
-            await obsidian.type("D");
+            await obsidian.press("D", "Mod", "Shift");
             await waitForItems(obsidian, ["dandelion"]);
             await expectText(obsidian, "Some text\ndan<|>");
             expect(await obsidian.readVaultFile(BLACKLIST_PATH)).toContain("dandruff");
