@@ -3,89 +3,84 @@
 [![](https://img.shields.io/github/v/release/tth05/obsidian-completr?style=flat-square)](https://github.com/tth05/obsidian-completr/releases)
 ![](https://img.shields.io/github/downloads/tth05/obsidian-completr/total?style=flat-square)
 
-This plugin provides advanced auto-completion functionality for obsidian. Legacy editor not supported.
+Advanced auto-completion for Obsidian: LaTeX, front matter, callouts and regular writing.
 
 ## Features
 
-- Latex support
-    - No need to start with a `\`
-    - Includes all MathJax commands
-    - Allows `\begin...` completion for all environments
-    - Support for inserting snippets with placeholders
-- YAML Front Matter support
-    - Learns any key with any value and provides completions for them
-- Word list support
-    - Load files where each line is a word
-    - Performant, even with very big [lists](#looking-for-word-lists)
-- Scanning your vault for words
-    - Scans the current file or your whole vault to find new words which can then be suggested
+- **LaTeX**
+    - All MathJax commands and `\begin{...}` environments, no need to type the `\`
+    - Works in `$...$` and `$$...$$` blocks, also while the block isn't closed yet
+    - Snippets with placeholders: `\frac` inserts `\frac{}{}`, Enter jumps to the next placeholder
+    - Add your own commands in the settings
+- **Words**
+    - Learns the words of your notes while you write, or scans the whole vault
+    - Word lists: import files with one word per line. Fast, even with millions of words
+    - Works with every script (Latin, Greek, Cyrillic, Devanagari, ...)
+    - Optional fuzzy matching (`mkd` -> `markdown`), sorting and ranking by usage
+- **Front matter**: keys and values used anywhere in your vault, including tags and nested values like `Area/Topic`
+  (in source mode)
+- **Callouts**: `> [!` suggests callout types with their icons, optionally from the
+  [Callout Manager](https://github.com/eth-p/obsidian-callout-manager) plugin
 
 ## Installation
 
-### Community plugin list
+Browse the community plugins list in Obsidian and search for `Completr`.
 
-Browse the community plugins list and search for `Completr`.
+Manually: download `main.js`, `styles.css` and `manifest.json` from a [release](https://github.com/tth05/obsidian-completr/releases)
+and copy them to `<vault>/.obsidian/plugins/obsidian-completr/`.
 
-### Manually
+## Usage
 
-- Download `main.js, styles.css` and `manifest.json` from a release of your choice
-- Copy the three files to your vault `VaultFolder/.obsidian/plugins/obsidian-completr/`
+### Keys
 
-### After installation
+All keys are commands, change them under *Settings -> Hotkeys* (filter for "Completr").
 
-1. Restart obsidian to ensure internal hooks can get registered properly
-2. Check out the [hotkeys](#hotkeys) section to further configure the plugin
+| Command                          | Default                 |
+| -------------------------------- | ----------------------- |
+| Open suggestion popup            | `Ctrl/Cmd + Space`      |
+| Select next / previous           | `ArrowDown` / `ArrowUp` |
+| Insert selected suggestion       | `Enter`                 |
+| Close suggestion popup           | `Escape`                |
+| Jump to next snippet placeholder | `Enter`                 |
+| Add selected to the blacklist    | `Shift + D`             |
+| Bypass the popup, press Enter    | `Ctrl + Enter`          |
+| Bypass the popup, press Tab      | `Ctrl + Tab`            |
+| Toggle automatic popup           | -                       |
 
-## Configuration
+- Keys that aren't used by the popup go to the editor as usual, e.g. `Shift + Tab` or `Home` close the popup and do
+  their normal thing.
+- Obsidian's hotkey settings can't bind a plain `Tab`. Enable *Insert with Tab* / *Jump to next placeholder with Tab* in
+  the Completr settings instead.
+- If *Select first suggestion* is disabled, `Enter` creates a new line until you pick a suggestion with the arrow keys.
+- In vim mode, `Escape` closes the popup and leaves insert mode.
 
 ### Blacklist
 
-- You can blacklist any suggestion by adding it to the `.obsidian/plugins/obsidian-completr/blacklisted_suggestions.txt`
-  file
-- Alternatively, you can use the hotkey to blacklist the currently selected suggestion (Default `Shift+D`)
+Select a suggestion and press `Shift + D` to never see it again. Blacklisted suggestions are listed at the bottom of the
+settings, where they can be removed again.
 
-### LaTeX commands
+### Custom LaTeX commands
 
-- All default LaTeX commands can be found in the `.obsidian/plugins/obsidian-completr/latex_commands.json` file
-- You can add, remove or modify commands by editing this file
-- Replacement syntax
-    - `#` is a placeholder for snippets
-    - `~` marks the cursor position to jump to. This cannot be on the same line as a placeholder
-    - `\n` is a newline
-- If the file contains incorrect syntax, a notice will pop up and the console will contain a more detailed error message
+Add them in the settings or edit `latex_commands.json` in the plugin folder. The file contains a JSON array of either
+strings or objects:
 
-### Hotkeys
+```json
+["\\mycommand{#}", { "displayName": "\\myenv", "replacement": "\\begin{myenv}\n~\n\\end{myenv}" }]
+```
 
-- All hotkeys are changeable from the hotkeys settings page
-- The "bypass" hotkeys are useful to run actions which pretend that the popup isn't open.
-    - If for example your insertion key is `Enter`, you couldn't press enter to go to the next line while the popup is
-      open. This is where you could use the bypass key.
-    - This also allows for other modifiers to be used, for example pressing `Tab` might require holding `Shift` to move
-      backwards. Only modifiers which are not used in the bypass keybinding will be forwarded.
-    - Note: The default bypass hotkeys might be shadowed by a built-in command. Check your keybindings if they don't
-      work.
-- If you want to change a hotkey without using any modifier, you need to use a workaround which can be
-  found [here](https://forum.obsidian.md/t/be-able-of-using-the-function-keys-f1-f12-to-perform-functions/15748/7)
-  or [here](https://forum.obsidian.md/t/function-keys-cant-be-bound-as-hotkeys-without-modifiers/26956/4), as Obsidian
-  currently does not support this.
+In replacements, `#` marks a placeholder and `~` the final cursor position. The built-in commands can be disabled in the
+settings.
 
-## Example usage
+### Data files
 
-#### Latex snippets
+Completr keeps its data in its plugin folder (`.obsidian/plugins/obsidian-completr/`):
 
-![Latex](https://user-images.githubusercontent.com/36999320/146680089-57390cd7-e3c3-418c-9c55-9536259bb956.gif)
-
-#### YAML Front Matter
-
-![Front matter](https://user-images.githubusercontent.com/36999320/148700639-6cb48631-0b2f-45b8-b48a-40357425e8bf.gif)
-
-#### File scanning
-
-![File scanner](https://user-images.githubusercontent.com/36999320/146680134-33d8393b-956a-4028-ab2f-62526f76984d.gif)
-
-#### Two million german words loaded
-
-![Word list](https://user-images.githubusercontent.com/36999320/146680359-ae572473-8919-4927-a6f5-bc39800a5c23.gif)
+- `scanned_words.txt`: words learned from your notes, one per line
+- `wordLists/`: imported word lists
+- `blacklisted_suggestions.txt`: the blacklist, one entry per line
+- `latex_commands.json`: your own LaTeX commands
+- `callout_suggestions.json`: callout types (unless Callout Manager is used)
+- `suggestion_usage.json`: how often suggestions were used, for ranking
 
 ## Looking for word lists?
 
@@ -94,6 +89,12 @@ Browse the community plugins list and search for `Completr`.
 
 ## Development
 
-- Clone the repo to the `plugins` folder of an obsidian vault
-- Run `npm i` and `npm run dev`
-- Enable the plugin in obsidian
+Requires [Bun](https://bun.com) (currently a canary build for `bun lint`: `bun upgrade --canary`).
+
+- Clone the repo into the `plugins` folder of a test vault, run `bun install` and `bun run dev`, enable the plugin
+- `bun run build`: production build
+- `bun check`: typecheck, lint and formatting check (`bun run fix` fixes what it can)
+- `bun test`: unit tests
+- `bun run test:e2e`: UI tests. Starts an isolated Obsidian instance with a temporary vault and drives it through the
+  Chrome DevTools Protocol. Needs a local Obsidian installation (override with `OBSIDIAN_EXE`). `E2E_HEADED=1` shows
+  the window, `E2E_KEEP=1` keeps it open after the run.

@@ -87,7 +87,7 @@ export default class CompletrPlugin extends Plugin {
             this.latex.load(migratedFrom === 1),
             this.callout.load(this.settings),
             this.wordList.load(this.settings).then(() => null),
-            this.fileScanner.load().then(() => null),
+            this.fileScanner.load(this.settings).then(() => null),
             this.usage.load().then(() => null),
         ]);
         for (const error of errors) if (error) new Notice("Completr: " + error, 8000);

@@ -1,6 +1,6 @@
 import { type CompletrSettings, SortOrder, WordInsertionMode } from "../settings.ts";
 import { applyTypedCasing } from "../text.ts";
-import type { WordIndex, WordMatch } from "../word_index.ts";
+import type { NormalizationOptions, WordIndex, WordMatch } from "../word_index.ts";
 import type { Suggestion, SuggestionContext, SuggestionProvider } from "./provider.ts";
 
 /** At most this many words are turned into suggestions, the popup can't show more than 100 anyway. */
@@ -38,6 +38,13 @@ export function sortWords(matches: WordMatch[], order: SortOrder, locale: string
     return matches.sort(compare);
 }
 
+export function getNormalization(settings: CompletrSettings): NormalizationOptions {
+    return {
+        ignoreCase: settings.wordInsertionMode !== WordInsertionMode.MATCH_CASE_REPLACE,
+        ignoreDiacritics: settings.ignoreDiacriticsWhenFiltering,
+    };
+}
+
 /** Base class for the providers that suggest plain words (file scanner, word lists). */
 export abstract class DictionaryProvider implements SuggestionProvider {
     abstract readonly id: string;
@@ -56,11 +63,9 @@ export abstract class DictionaryProvider implements SuggestionProvider {
         // Manually opening the popup ignores the minimum length, an empty query then lists all words.
         if (!context.manual && (query.length === 0 || query.length < settings.minWordTriggerLength)) return [];
 
-        const ignoreCase = settings.wordInsertionMode !== WordInsertionMode.MATCH_CASE_REPLACE;
         const appendMode = settings.wordInsertionMode === WordInsertionMode.IGNORE_CASE_APPEND;
         const matches = this.getIndex(context, settings).search(query, {
-            ignoreCase,
-            ignoreDiacritics: settings.ignoreDiacriticsWhenFiltering,
+            ...getNormalization(settings),
             fuzzy: settings.fuzzyMatching,
             fuzzyLimit: MAX_RESULTS,
         });

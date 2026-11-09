@@ -1,0 +1,20 @@
+name: Check
+
+on:
+    push:
+        branches: ["**"]
+    pull_request:
+
+jobs:
+    check:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  # `bun lint` is only available in canary builds for now
+                  bun-version: canary
+            - run: bun install --frozen-lockfile
+            - run: bun run check
+            - run: bun test
+            - run: bun run build

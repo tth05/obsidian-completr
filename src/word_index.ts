@@ -22,18 +22,43 @@ export interface WordMatch {
     matches: [number, number][];
 }
 
+/** Separates the normalized key from the original word inside an entry. Sorts before every other character. */
+const SEPARATOR = "\u0000";
+
+/**
+ * All words of the index, normalized and sorted. An entry is the normalized word (the key), followed by
+ * {@link SEPARATOR} and the original word if they differ. Because the separator sorts first, sorting the entries sorts
+ * by key, and an entry starts with a query exactly if its key does. This keeps a view to a single array of mostly
+ * shared strings, which can be sorted natively (fast, even for millions of words).
+ */
 interface View {
     opts: NormalizationOptions;
-    /** Normalized words, sorted. */
-    keys: string[];
-    /** words[i] is the original word of keys[i]. */
-    words: string[];
+    entries: string[];
 }
 
 function normalize(word: string, opts: NormalizationOptions): string {
     let key = opts.ignoreCase ? word.toLowerCase() : word;
     if (opts.ignoreDiacritics) key = removeDiacritics(key);
     return key;
+}
+
+function toEntry(word: string, opts: NormalizationOptions): string {
+    const key = normalize(word, opts);
+    return key === word ? word : key + SEPARATOR + word;
+}
+
+function keyLength(entry: string): number {
+    const sep = entry.indexOf(SEPARATOR);
+    return sep === -1 ? entry.length : sep;
+}
+
+function entryWord(entry: string): string {
+    const sep = entry.indexOf(SEPARATOR);
+    return sep === -1 ? entry : entry.substring(sep + 1);
+}
+
+function viewMode(opts: NormalizationOptions): string {
+    return (opts.ignoreCase ? "i" : "") + (opts.ignoreDiacritics ? "d" : "");
 }
 
 /** First index in the sorted array with arr[i] >= value. */
@@ -49,10 +74,14 @@ function lowerBound(arr: readonly string[], value: string): number {
 }
 
 /**
- * Matches `query` as a subsequence of `key`. Returns the matched ranges and a score (higher is better), or null.
- * Consecutive matches and matches at word starts score higher, gaps score lower.
+ * Matches `query` as a subsequence of the first `length` characters of `key`. Returns the matched ranges and a score
+ * (higher is better), or null. Consecutive matches score higher, gaps lower.
  */
-export function fuzzyMatch(query: string, key: string): { score: number; matches: [number, number][] } | null {
+export function fuzzyMatch(
+    query: string,
+    key: string,
+    length = key.length,
+): { score: number; matches: [number, number][] } | null {
     if (query.length === 0) return { score: 0, matches: [] };
     if (key[0] !== query[0]) return null;
 
@@ -60,7 +89,7 @@ export function fuzzyMatch(query: string, key: string): { score: number; matches
     let score = 0;
     let q = 0;
     let lastMatch = -2;
-    for (let i = 0; i < key.length && q < query.length; i++) {
+    for (let i = 0; i < length && q < query.length; i++) {
         if (key[i] !== query[q]) continue;
 
         if (lastMatch === i - 1 && matches.length > 0) {
@@ -68,7 +97,7 @@ export function fuzzyMatch(query: string, key: string): { score: number; matches
             score += 2;
         } else {
             matches.push([i, i + 1]);
-            score -= i - lastMatch - 1 > 0 && lastMatch >= 0 ? 1 : 0;
+            if (lastMatch >= 0) score -= 1;
         }
         lastMatch = i;
         q++;
@@ -76,13 +105,13 @@ export function fuzzyMatch(query: string, key: string): { score: number; matches
 
     if (q < query.length) return null;
     // Prefer shorter words
-    score -= (key.length - query.length) * 0.01;
+    score -= (length - query.length) * 0.01;
     return { score, matches };
 }
 
 /**
  * A set of words which can quickly be searched by prefix. For every combination of normalization options a sorted view
- * is built lazily and kept up to date incrementally afterwards.
+ * is built on first use (or ahead of time with {@link prepare}) and kept up to date incrementally afterwards.
  */
 export class WordIndex {
     private readonly words = new Set<string>();
@@ -106,15 +135,13 @@ export class WordIndex {
         this.words.add(word);
 
         for (const view of this.views.values()) {
-            const key = normalize(word, view.opts);
-            const index = lowerBound(view.keys, key);
-            view.keys.splice(index, 0, key);
-            view.words.splice(index, 0, word);
+            const entry = toEntry(word, view.opts);
+            view.entries.splice(lowerBound(view.entries, entry), 0, entry);
         }
         return true;
     }
 
-    /** Replaces all words. Faster than adding them one by one. */
+    /** Replaces all words. Much faster than adding them one by one. */
     setAll(words: Iterable<string>) {
         this.words.clear();
         for (const w of words) if (w) this.words.add(w);
@@ -124,11 +151,9 @@ export class WordIndex {
     delete(word: string): boolean {
         if (!this.words.delete(word)) return false;
         for (const view of this.views.values()) {
-            const i = view.words.indexOf(word);
-            if (i !== -1) {
-                view.keys.splice(i, 1);
-                view.words.splice(i, 1);
-            }
+            const entry = toEntry(word, view.opts);
+            const i = lowerBound(view.entries, entry);
+            if (view.entries[i] === entry) view.entries.splice(i, 1);
         }
         return true;
     }
@@ -138,17 +163,20 @@ export class WordIndex {
         this.views.clear();
     }
 
+    /** Builds the view for the given options now, so the first search doesn't have to. */
+    prepare(opts: NormalizationOptions) {
+        this.getView(opts);
+    }
+
     private getView(opts: NormalizationOptions): View {
-        const mode = (opts.ignoreCase ? "i" : "") + (opts.ignoreDiacritics ? "d" : "");
+        const mode = viewMode(opts);
         let view = this.views.get(mode);
         if (!view) {
-            const entries = Array.from(this.words, (w) => [normalize(w, opts), w] as const);
-            entries.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
-            view = {
-                opts: { ignoreCase: opts.ignoreCase, ignoreDiacritics: opts.ignoreDiacritics },
-                keys: entries.map((e) => e[0]),
-                words: entries.map((e) => e[1]),
-            };
+            const normalization = { ignoreCase: opts.ignoreCase, ignoreDiacritics: opts.ignoreDiacritics };
+            const entries = Array.from(this.words, (w) => toEntry(w, normalization));
+            // Default sort compares UTF-16 code units, like `<` does. Much faster than a custom comparator.
+            entries.sort();
+            view = { opts: normalization, entries };
             this.views.set(mode, view);
         }
         return view;
@@ -159,39 +187,39 @@ export class WordIndex {
      * query returns all words.
      */
     search(query: string, opts: SearchOptions): WordMatch[] {
-        const view = this.getView(opts);
+        const { entries } = this.getView(opts);
         const q = normalize(query, opts);
         const result: WordMatch[] = [];
         const prefixRange: [number, number][] = q.length > 0 ? [[0, query.length]] : [];
 
-        const start = lowerBound(view.keys, q);
+        const start = lowerBound(entries, q);
         let end = start;
-        for (; end < view.keys.length && view.keys[end].startsWith(q); end++) {
-            result.push({ word: view.words[end], isPrefixMatch: true, score: 0, matches: prefixRange });
+        for (; end < entries.length && entries[end].startsWith(q); end++) {
+            result.push({ word: entryWord(entries[end]), isPrefixMatch: true, score: 0, matches: prefixRange });
         }
 
         if (!opts.fuzzy || q.length < 2) return result;
 
         // Fuzzy matches have to start with the same character, so only the range of keys starting with it is scanned.
         const firstChar = q[0];
-        const fuzzyStart = lowerBound(view.keys, firstChar);
         const fuzzyLimit = opts.fuzzyLimit ?? 200;
         const fuzzy: WordMatch[] = [];
-        for (let i = fuzzyStart; i < view.keys.length; i++) {
-            const key = view.keys[i];
-            if (key[0] !== firstChar) break;
+        for (let i = lowerBound(entries, firstChar); i < entries.length; i++) {
+            const entry = entries[i];
+            if (entry[0] !== firstChar) break;
             if (i >= start && i < end) continue; // already a prefix match
 
-            const m = fuzzyMatch(q, key);
+            const length = keyLength(entry);
+            const m = fuzzyMatch(q, entry, length);
             if (!m) continue;
             // Match positions refer to the normalized key. They are only reliable for highlighting if normalization
             // did not change the length.
-            const word = view.words[i];
+            const word = entryWord(entry);
             fuzzy.push({
                 word,
                 isPrefixMatch: false,
                 score: m.score,
-                matches: key.length === word.length ? m.matches : [],
+                matches: length === word.length ? m.matches : [],
             });
         }
 

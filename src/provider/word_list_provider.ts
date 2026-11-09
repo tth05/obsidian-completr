@@ -2,7 +2,7 @@ import { type DataFiles, splitLines } from "../data_files.ts";
 import type { CompletrSettings } from "../settings.ts";
 import { WordIndex } from "../word_index.ts";
 import type { SuggestionBlacklist } from "./blacklist.ts";
-import { DictionaryProvider } from "./dictionary_provider.ts";
+import { DictionaryProvider, getNormalization } from "./dictionary_provider.ts";
 
 export const WORD_LISTS_FOLDER = "wordLists";
 
@@ -51,6 +51,8 @@ export class WordListProvider extends DictionaryProvider {
         }
 
         this.index.setAll(words);
+        // Sorting a big list takes a moment, better now than on the first keystroke
+        this.index.prepare(getNormalization(settings));
         return this.index.size;
     }
 

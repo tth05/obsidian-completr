@@ -2,7 +2,7 @@ import { type DataFiles, splitLines } from "../data_files.ts";
 import type { CompletrSettings } from "../settings.ts";
 import { WordIndex } from "../word_index.ts";
 import type { SuggestionBlacklist } from "./blacklist.ts";
-import { DictionaryProvider } from "./dictionary_provider.ts";
+import { DictionaryProvider, getNormalization } from "./dictionary_provider.ts";
 
 const SCANNED_WORDS_FILE = "scanned_words.txt";
 const SAVE_DELAY_MS = 2000;
@@ -113,10 +113,11 @@ export class FileScannerProvider extends DictionaryProvider {
         await this.flush();
     }
 
-    async load() {
+    async load(settings: CompletrSettings) {
         const contents = await this.files.read(SCANNED_WORDS_FILE);
         if (contents === null) return;
         this.index.setAll(splitLines(contents).filter((w) => w && !this.blacklist.has(w)));
+        this.index.prepare(getNormalization(settings));
     }
 
     private scheduleSave() {
