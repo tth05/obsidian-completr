@@ -1,110 +1,84 @@
 body {
-    --completr-suggestion-icon-height: 14px;
+    --completr-suggestion-icon-size: 14px;
+    --completr-placeholder-0: #87cefa;
+    --completr-placeholder-1: #ffa500;
+    --completr-placeholder-2: #32cd32;
+    --completr-placeholder-3: #ff69b4;
+    --completr-placeholder-4: #d2b48c;
+    --completr-placeholder-5: #da70d6;
+    --completr-placeholder-6: #ffdead;
 }
 
+/* ---- Popup ---- */
+
 .completr-suggestion-item {
-    padding: 5px 10px 5px 10px;
+    display: flex;
+    align-items: center;
+    gap: 0.5ch;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-
-    display: flex;
-    align-items: center;
-}
-
-.completr-suggestion-item > * {
-    display: inline-block;
 }
 
 .completr-suggestion-icon {
-    height: var(--completr-suggestion-icon-height);
-    min-height: var(--completr-suggestion-icon-height);
-    max-height: var(--completr-suggestion-icon-height);
+    display: flex;
+    flex-shrink: 0;
+    color: var(--completr-suggestion-color, var(--text-muted));
+}
 
-    margin-right: 0.5ch;
-    color: var(--completr-suggestion-color);
+.completr-suggestion-icon svg {
+    width: var(--completr-suggestion-icon-size);
+    height: var(--completr-suggestion-icon-size);
 }
 
 .completr-suggestion-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.completr-suggestion-placeholder {
-    border-width: 1px 0 1px 0;
+/* Without focus, no item is selected: Enter goes to the editor until an item is selected with the arrow keys. */
+.completr-unfocused .suggestion-item.is-selected:not(:hover) {
+    background-color: transparent;
+}
+
+/* ---- Snippet placeholders ---- */
+
+.completr-placeholder {
+    border-width: 1px 0;
     border-style: solid;
+    border-color: var(--completr-placeholder-color);
 }
 
-.completr-settings-no-border {
-    border: none;
+/* CodeMirror nests spans when decorations overlap, the color should apply to all of them. */
+span.completr-placeholder span {
+    border-color: var(--completr-placeholder-color);
 }
 
-.completr-settings-list-item {
-    border-top: 1px solid grey;
-    padding: 4px 0 0 0;
+.completr-placeholder-empty {
+    display: inline-block;
+    width: 0.6em;
+    height: 1em;
+    vertical-align: text-bottom;
+    border-width: 1px;
+    border-radius: 2px;
+    opacity: 0.8;
 }
+
+.completr-placeholder-0 { --completr-placeholder-color: var(--completr-placeholder-0); }
+.completr-placeholder-1 { --completr-placeholder-color: var(--completr-placeholder-1); }
+.completr-placeholder-2 { --completr-placeholder-color: var(--completr-placeholder-2); }
+.completr-placeholder-3 { --completr-placeholder-color: var(--completr-placeholder-3); }
+.completr-placeholder-4 { --completr-placeholder-color: var(--completr-placeholder-4); }
+.completr-placeholder-5 { --completr-placeholder-color: var(--completr-placeholder-5); }
+.completr-placeholder-6 { --completr-placeholder-color: var(--completr-placeholder-6); }
+
+/* ---- Settings ---- */
 
 .completr-settings-error {
-    border: 1px solid red !important;
+    border-color: var(--text-error) !important;
 }
 
-/**
-Snippet color classes.
-["lightskyblue", "orange", "lime", "pink", "cornsilk", "magenta", "navajowhite"]
- */
-
-.completr-suggestion-placeholder0 {
-    border-color: lightskyblue;
-}
-
-/* These extra selectors enforce their color on all children, because CodeMirror does weird nesting of spans when
- nesting multiple decorations. */
-span.completr-suggestion-placeholder0 span {
-    border-color: lightskyblue;
-}
-
-.completr-suggestion-placeholder1 {
-    border-color: orange;
-}
-
-span.completr-suggestion-placeholder1 span {
-    border-color: orange;
-}
-
-.completr-suggestion-placeholder2 {
-    border-color: lime;
-}
-
-span.completr-suggestion-placeholder2 span {
-    border-color: lime;
-}
-
-.completr-suggestion-placeholder3 {
-    border-color: pink;
-}
-
-span.completr-suggestion-placeholder3 span {
-    border-color: pink;
-}
-
-.completr-suggestion-placeholder4 {
-    border-color: cornsilk;
-}
-
-span.completr-suggestion-placeholder4 span {
-    border-color: cornsilk;
-}
-
-.completr-suggestion-placeholder5 {
-    border-color: magenta;
-}
-
-span.completr-suggestion-placeholder5 span {
-    border-color: magenta;
-}
-
-.completr-suggestion-placeholder6 {
-    border-color: navajowhite;
-}
-
-span.completr-suggestion-placeholder6 span {
-    border-color: navajowhite;
+.completr-latex-replacement {
+    width: 100%;
+    font-family: var(--font-monospace);
 }

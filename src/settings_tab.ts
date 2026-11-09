@@ -1,396 +1,621 @@
-import { App, ButtonComponent, Modal, Notice, PluginSettingTab, Setting } from "obsidian";
-import {isInstalled as isCalloutManagerInstalled} from "obsidian-callout-manager";
-import CompletrPlugin from "./main";
-import { FileScanner } from "./provider/scanner_provider";
-import { WordList } from "./provider/word_list_provider";
-import { CalloutProviderSource, CompletrSettings, WordInsertionMode } from "./settings";
-import { TextDecoder } from "util";
-import { detect } from "jschardet";
+import {
+    type App,
+    type ButtonComponent,
+    Modal,
+    Notice,
+    PluginSettingTab,
+    Setting,
+    SettingGroup,
+    type TextComponent,
+} from "obsidian";
+import { isInstalled as isCalloutManagerInstalled } from "obsidian-callout-manager";
+import { decodeText } from "./data_files.ts";
+import type CompletrPlugin from "./main.ts";
+import { CUSTOM_LATEX_COMMANDS_FILE } from "./provider/latex_provider.ts";
+import { CalloutProviderSource, type CompletrSettings, IconMode, SortOrder, WordInsertionMode } from "./settings.ts";
+import { compileCharacterClass } from "./text.ts";
+
+type BooleanKey = {
+    [K in keyof CompletrSettings]: CompletrSettings[K] extends boolean ? K : never;
+}[keyof CompletrSettings];
+type NumberKey = {
+    [K in keyof CompletrSettings]: CompletrSettings[K] extends number ? K : never;
+}[keyof CompletrSettings];
 
 export default class CompletrSettingsTab extends PluginSettingTab {
+    private isReloadingWords = false;
 
-    private plugin: CompletrPlugin;
-    private isReloadingWords: boolean;
-
-    constructor(app: App, plugin: CompletrPlugin) {
+    constructor(
+        app: App,
+        private readonly plugin: CompletrPlugin,
+    ) {
         super(app, plugin);
-        this.plugin = plugin;
     }
 
-    display(): any {
-        const { containerEl } = this;
+    private get settings() {
+        return this.plugin.settings;
+    }
 
+    private async save() {
+        await this.plugin.saveSettings();
+    }
+
+    // ---- Setting builders -------------------------------------------------------------------------------------------
+
+    private toggle(group: SettingGroup, key: BooleanKey, name: string, desc: string, onChange?: () => unknown) {
+        group.addSetting((s) =>
+            s
+                .setName(name)
+                .setDesc(desc)
+                .addToggle((t) =>
+                    t.setValue(this.settings[key]).onChange(async (value) => {
+                        this.settings[key] = value;
+                        await this.save();
+                        await onChange?.();
+                    }),
+                ),
+        );
+    }
+
+    private number(group: SettingGroup, key: NumberKey, name: string, desc: string, min = 0) {
+        group.addSetting((s) =>
+            s
+                .setName(name)
+                .setDesc(desc)
+                .addText((text) => {
+                    text.inputEl.type = "number";
+                    text.inputEl.min = String(min);
+                    text.setValue(String(this.settings[key])).onChange(async (value) => {
+                        const parsed = parseInt(value);
+                        if (isNaN(parsed) || parsed < min) return;
+                        this.settings[key] = parsed;
+                        await this.save();
+                    });
+                }),
+        );
+    }
+
+    private dropdown<K extends keyof CompletrSettings>(
+        group: SettingGroup,
+        key: K,
+        name: string,
+        desc: string,
+        options: Record<string, string>,
+        onChange?: () => unknown,
+    ) {
+        group.addSetting((s) =>
+            s
+                .setName(name)
+                .setDesc(desc)
+                .addDropdown((d) =>
+                    d
+                        .addOptions(options)
+                        .setValue(String(this.settings[key]))
+                        .onChange(async (value) => {
+                            (this.settings as unknown as Record<string, unknown>)[key] = value;
+                            await this.save();
+                            await onChange?.();
+                        }),
+                ),
+        );
+    }
+
+    // ---- Display ------------------------------------------------------------------------------------------------
+
+    override display(): void {
+        const { containerEl } = this;
         containerEl.empty();
 
-        new Setting(containerEl)
-            .setName("Word character regex")
-            .setDesc("A regular expression which matches a character of a word. Used by during completion to find the word to the left of the cursor and used by the file scanner to find valid words.")
-            .addText(text => text
-                .setValue(this.plugin.settings.characterRegex)
-                .onChange(async val => {
-                    try {
-                        //Check if regex is valid
-                        new RegExp("[" + val + "]+").test("");
-                        text.inputEl.removeClass("completr-settings-error");
-                        this.plugin.settings.characterRegex = val;
-                        await this.plugin.saveSettings();
-                    } catch (e) {
-                        text.inputEl.addClass("completr-settings-error");
-                    }
-                }));
+        this.displayGeneral(containerEl);
+        this.displayMatching(containerEl);
+        this.displayLatex(containerEl);
+        this.displayFrontMatter(containerEl);
+        this.displayFileScanner(containerEl);
+        this.displayWordLists(containerEl);
+        this.displayCallouts(containerEl);
+        this.displayBlacklist(containerEl);
+    }
 
-        new Setting(containerEl)
-            .setName("Auto focus")
-            .setDesc("Whether the popup is automatically focused once it opens.")
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.autoFocus)
-                .onChange(async val => {
-                    this.plugin.settings.autoFocus = val;
-                    await this.plugin.saveSettings();
-                }));
+    private displayGeneral(containerEl: HTMLElement) {
+        const group = new SettingGroup(containerEl);
+        this.toggle(
+            group,
+            "autoTrigger",
+            "Open automatically",
+            'Open the popup while typing. Otherwise use the "Open suggestion popup" command (Ctrl/Cmd+Space). Can be toggled with a command.',
+        );
+        this.toggle(
+            group,
+            "autoFocus",
+            "Select first suggestion",
+            "Select the first suggestion when the popup opens, so Enter inserts it. Otherwise Enter starts a new line until a suggestion is selected with the arrow keys.",
+        );
+        this.toggle(
+            group,
+            "insertWithTab",
+            "Insert with Tab",
+            'Tab inserts the selected suggestion, in addition to the "Insert selected suggestion" hotkey (Enter by default).',
+        );
+        this.toggle(
+            group,
+            "jumpWithTab",
+            "Jump to next placeholder with Tab",
+            'Tab moves to the next snippet placeholder, in addition to the "Jump to next snippet placeholder" hotkey (Enter by default).',
+        );
+        this.dropdown(group, "iconMode", "Icons", "Which icons to show next to suggestions.", {
+            [IconMode.SUGGESTION]: "Only for suggestions with their own icon (callouts)",
+            [IconMode.SUGGESTION_OR_PROVIDER]: "Show where each suggestion comes from",
+            [IconMode.NONE]: "None",
+        });
+        group.addSetting((s) =>
+            s
+                .setName("Hotkeys")
+                .setDesc(
+                    "All keys used in the popup (arrows, Enter, Escape, ...) are commands and can be changed in the hotkey settings.",
+                )
+                .addButton((b) =>
+                    b.setButtonText("Open hotkeys").onClick(() => {
+                        const setting = (
+                            this.app as unknown as {
+                                setting: { openTabById(id: string): { setQuery?(q: string): void } };
+                            }
+                        ).setting;
+                        setting.openTabById("hotkeys")?.setQuery?.(this.plugin.manifest.id);
+                    }),
+                ),
+        );
+    }
 
-        new Setting(containerEl)
-            .setName("Auto trigger")
-            .setDesc("Whether the popup opens automatically when typing.")
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.autoTrigger)
-                .onChange(async val => {
-                    this.plugin.settings.autoTrigger = val;
-                    await this.plugin.saveSettings();
-                }));
+    private displayMatching(containerEl: HTMLElement) {
+        const group = new SettingGroup(containerEl).setHeading("Words");
+        group.addSetting((s) =>
+            s
+                .setName("Word characters")
+                .setDesc(
+                    "The characters a word consists of, as the content of a regex character class. The default \\p{L}\\p{M} matches letters of all languages. Add e.g. 0-9 for numbers, or - and _.",
+                )
+                .addText((text: TextComponent) =>
+                    text.setValue(this.settings.characterRegex).onChange(async (value) => {
+                        const valid = value.length > 0 && compileCharacterClass(value) !== null;
+                        text.inputEl.toggleClass("completr-settings-error", !valid);
+                        if (!valid) return;
+                        this.settings.characterRegex = value;
+                        await this.save();
+                    }),
+                ),
+        );
+        this.number(
+            group,
+            "minWordLength",
+            "Minimum word length",
+            "Shorter words are never suggested by the file scanner and word lists.",
+            1,
+        );
+        this.number(
+            group,
+            "minWordTriggerLength",
+            "Minimum typed length",
+            "How many characters have to be typed before word suggestions appear. Opening the popup manually ignores this.",
+            1,
+        );
+        this.number(
+            group,
+            "maxLookBackDistance",
+            "Maximum word length",
+            "How far back from the cursor to look for the start of the word that is being typed.",
+            1,
+        );
+        this.dropdown(
+            group,
+            "wordInsertionMode",
+            "Insertion mode",
+            "Ignore-case suggests 'Hello' for 'hello', match-case does not. Append keeps what you typed and completes it ('Hell' -> 'Hello' even if only 'hello' is known), replace inserts the known word.",
+            {
+                [WordInsertionMode.IGNORE_CASE_REPLACE]: WordInsertionMode.IGNORE_CASE_REPLACE,
+                [WordInsertionMode.IGNORE_CASE_APPEND]: WordInsertionMode.IGNORE_CASE_APPEND,
+                [WordInsertionMode.MATCH_CASE_REPLACE]: WordInsertionMode.MATCH_CASE_REPLACE,
+            },
+        );
+        this.toggle(
+            group,
+            "ignoreDiacriticsWhenFiltering",
+            "Ignore diacritics",
+            "Typing 'Hello' also suggests 'Hèllò'.",
+        );
+        this.toggle(
+            group,
+            "fuzzyMatching",
+            "Fuzzy matching",
+            "Also suggest words that contain the typed characters in order, e.g. 'mkd' suggests 'markdown'. These are listed after words that start with the typed text.",
+        );
+        this.dropdown(group, "sortOrder", "Sort order", "How word suggestions are ordered.", {
+            [SortOrder.SHORTEST_FIRST]: "Shortest first",
+            [SortOrder.LONGEST_FIRST]: "Longest first",
+            [SortOrder.ALPHABETICAL]: "Alphabetical",
+        });
+        group.addSetting((s) =>
+            s
+                .setName("Sorting language")
+                .setDesc(
+                    "Language used for alphabetical sorting, e.g. 'de' or 'sv'. Leave empty to use Obsidian's language.",
+                )
+                .addText((t) =>
+                    t
+                        .setPlaceholder("Obsidian's language")
+                        .setValue(this.settings.sortLocale)
+                        .onChange(async (value) => {
+                            this.settings.sortLocale = value.trim();
+                            await this.save();
+                        }),
+                ),
+        );
+        this.toggle(group, "rankByUsage", "Rank by usage", "Suggestions you insert often are listed first.");
+        this.toggle(group, "insertSpaceAfterWord", "Add space after words", "Insert a space after a completed word.");
+        this.toggle(
+            group,
+            "disableWordsInCode",
+            "No words in code",
+            "Don't suggest words inside code blocks and inline code.",
+        );
+    }
 
-        new Setting(containerEl)
-            .setName("Minimum word length")
-            .setDesc("The minimum length a word has to be, to count as a valid suggestion. This value is used by the file" +
-                " scanner and word list provider.")
-            .addText(text => {
-                text.inputEl.type = "number";
-                text
-                    .setValue(this.plugin.settings.minWordLength + "")
-                    .onChange(async val => {
-                        if (!val || val.length < 1)
-                            return;
+    private displayLatex(containerEl: HTMLElement) {
+        const group = new SettingGroup(containerEl).setHeading("LaTeX");
+        this.toggle(
+            group,
+            "latexProviderEnabled",
+            "Enabled",
+            "Suggest LaTeX commands inside math blocks ($...$ and $$...$$).",
+        );
+        this.toggle(
+            group,
+            "latexBuiltInCommands",
+            "Built-in commands",
+            "Suggest the built-in commands. Disable to only use your own. Single commands can be hidden with the blacklist (Shift+D).",
+        );
+        this.toggle(
+            group,
+            "latexTriggerInCodeBlocks",
+            "Trigger in code",
+            "Also trigger after dollar signs inside code blocks or inline code, e.g. `$\\fr`.",
+        );
+        this.toggle(group, "latexIgnoreCase", "Ignore case", "'MaThbb' also suggests 'mathbb'.");
+        this.number(
+            group,
+            "latexMinWordTriggerLength",
+            "Minimum typed length",
+            "How many characters have to be typed before LaTeX suggestions appear.",
+            1,
+        );
 
-                        this.plugin.settings.minWordLength = parseInt(val);
-                        await this.plugin.saveSettings();
-                    });
-            });
-
-        new Setting(containerEl)
-            .setName("Minimum word trigger length")
-            .setDesc("The minimum length a word has to be, to trigger suggestions. The LaTeX provider has its own separate setting.")
-            .addText(text => {
-                text.inputEl.type = "number";
-                text
-                    .setValue(this.plugin.settings.minWordTriggerLength + "")
-                    .onChange(async val => {
-                        if (!val || val.length < 1)
-                            return;
-
-                        this.plugin.settings.minWordTriggerLength = parseInt(val);
-                        await this.plugin.saveSettings();
-                    });
-            });
-
-        new Setting(containerEl)
-            .setName("Word insertion mode")
-            .setDesc("The insertion mode that is used. Ignore-case would suggest 'Hello' if the typed text is 'hello', match-case would not. " +
-                "Append would complete 'Hell' with 'Hello' while replace would complete it with 'hello' instead (if only 'hello' was a known word). Only used by the file scanner and word list provider.")
-            .addDropdown(dropdown => dropdown
-                .addOption(WordInsertionMode.IGNORE_CASE_REPLACE, WordInsertionMode.IGNORE_CASE_REPLACE)
-                .addOption(WordInsertionMode.IGNORE_CASE_APPEND, WordInsertionMode.IGNORE_CASE_APPEND)
-                .addOption(WordInsertionMode.MATCH_CASE_REPLACE, WordInsertionMode.MATCH_CASE_REPLACE)
-                .setValue(this.plugin.settings.wordInsertionMode)
-                .onChange(async val => {
-                    this.plugin.settings.wordInsertionMode = val as WordInsertionMode;
-                    await this.plugin.saveSettings();
-                })
+        const custom = new SettingGroup(containerEl)
+            .setHeading("Custom LaTeX commands")
+            .addExtraButton((b) =>
+                b
+                    .setIcon("folder-open")
+                    .setTooltip(`Open ${CUSTOM_LATEX_COMMANDS_FILE}`)
+                    .onClick(() => this.app.openWithDefaultApp(this.plugin.files.path(CUSTOM_LATEX_COMMANDS_FILE))),
+            )
+            .addExtraButton((b) =>
+                b
+                    .setIcon("refresh-cw")
+                    .setTooltip("Reload from file")
+                    .onClick(async () => {
+                        const error = await this.plugin.latex.load(false);
+                        new Notice(error ?? `Loaded ${this.plugin.latex.getCustomCommands().length} custom commands`);
+                        this.display();
+                    }),
             );
+        custom.addSetting((s) =>
+            s
+                .setDesc(
+                    "Your own suggestions inside math blocks. In the replacement, # marks a placeholder (jump with Enter) and ~ the final cursor position.",
+                )
+                .addButton((b) =>
+                    b
+                        .setButtonText("Add command")
+                        .setCta()
+                        .onClick(() =>
+                            new LatexCommandModal(this.app, async (displayName, replacement) => {
+                                await this.plugin.latex.setCustomCommands([
+                                    ...this.plugin.latex.getCustomCommands(),
+                                    { displayName, replacement },
+                                ]);
+                                this.display();
+                            }).open(),
+                        ),
+                ),
+        );
+        const commands = this.plugin.latex.getCustomCommands();
+        commands.forEach((command, i) =>
+            custom.addSetting((s) => {
+                s.setName(command.displayName).addExtraButton((b) =>
+                    b
+                        .setIcon("trash")
+                        .setTooltip("Remove")
+                        .onClick(async () => {
+                            await this.plugin.latex.setCustomCommands(commands.filter((_, j) => j !== i));
+                            this.display();
+                        }),
+                );
+                if (command.replacement !== command.displayName) s.setDesc(command.replacement);
+            }),
+        );
+    }
 
-        new Setting(containerEl)
-            .setName("Ignore diacritics when filtering")
-            .setDesc("When enabled, the query 'Hello' can suggest 'Hèllò', meaning diacritics will be ignored when filtering the suggestions. Only used by the file scanner and word list provider.")
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.ignoreDiacriticsWhenFiltering)
-                .onChange(async val => {
-                    this.plugin.settings.ignoreDiacriticsWhenFiltering = val;
-                    await this.plugin.saveSettings();
-                }));
+    private displayFrontMatter(containerEl: HTMLElement) {
+        const group = new SettingGroup(containerEl).setHeading("Front matter");
+        this.toggle(
+            group,
+            "frontMatterProviderEnabled",
+            "Enabled",
+            "Suggest keys and values in the YAML front matter (in source mode), based on the front matter of all notes.",
+        );
+        this.toggle(group, "frontMatterIgnoreCase", "Ignore case", "'MyTag' also suggests 'mytag'.");
+        this.toggle(
+            group,
+            "frontMatterTagAppendSuffix",
+            "Add separator after list values",
+            "After completing a value of a list, add ', ' or a new list item, so the next value can be typed right away.",
+        );
+    }
 
-        new Setting(containerEl)
-            .setName("Latex provider")
-            .setHeading();
+    private displayFileScanner(containerEl: HTMLElement) {
+        const group = new SettingGroup(containerEl)
+            .setHeading("File scanner")
+            .addExtraButton((b) =>
+                b
+                    .setIcon("search")
+                    .setTooltip("Scan all notes in the vault now")
+                    .onClick(() =>
+                        new ConfirmationModal(
+                            this.app,
+                            "Scan the whole vault?",
+                            "Depending on the size of your vault, this may take a moment.",
+                            (b) => b.setButtonText("Scan").setCta(),
+                            async () => {
+                                const { vault } = this.app;
+                                for (const file of vault.getMarkdownFiles())
+                                    this.plugin.fileScanner.addText(await vault.cachedRead(file), this.settings);
+                                await this.plugin.fileScanner.flush();
+                                new Notice(`Completr: ${this.plugin.fileScanner.wordCount} known words`);
+                            },
+                        ).open(),
+                    ),
+            )
+            .addExtraButton((b) =>
+                b
+                    .setIcon("trash")
+                    .setTooltip("Forget all scanned words")
+                    .onClick(() =>
+                        new ConfirmationModal(
+                            this.app,
+                            "Forget all scanned words?",
+                            "Until notes are scanned again, the file scanner won't suggest anything.",
+                            (b) => b.setButtonText("Delete").setWarning(),
+                            () => this.plugin.fileScanner.deleteAllWords(),
+                        ).open(),
+                    ),
+            );
+        this.toggle(group, "fileScannerProviderEnabled", "Enabled", "Suggest words that appear in your notes.");
+        this.toggle(
+            group,
+            "fileScannerScanCurrent",
+            "Learn words while writing",
+            "Remember the words of the note you're editing. Use the scan button above to learn the words of all notes.",
+        );
+        this.toggle(
+            group,
+            "fileScannerCurrentFileOnly",
+            "Only words from the current note",
+            "Only suggest words that appear in the note you're editing.",
+        );
+    }
 
-        this.createEnabledSetting("latexProviderEnabled", "Whether or not the latex provider is enabled", containerEl);
-
-        new Setting(containerEl)
-            .setName("Trigger in code blocks")
-            .setDesc("Whether the LaTeX provider should trigger after dollar signs which are enclosed in code blocks (for example ```$\\fr```).")
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.latexTriggerInCodeBlocks)
-                .onChange(async val => {
-                    this.plugin.settings.latexTriggerInCodeBlocks = val;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName("Ignore case")
-            .setDesc("Whether the LaTeX provider should ignore the casing of the typed text. If so, the input 'MaThbb' could suggest 'mathbb'.")
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.latexIgnoreCase)
-                .onChange(async val => {
-                    this.plugin.settings.latexIgnoreCase = val;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName("Minimum word trigger length")
-            .setDesc("The minimum length a query has to be, to trigger suggestions.")
-            .addText(text => {
-                text.inputEl.type = "number";
-                text
-                    .setValue(this.plugin.settings.latexMinWordTriggerLength + "")
-                    .onChange(async val => {
-                        if (!val || val.length < 1)
-                            return;
-
-                        this.plugin.settings.latexMinWordTriggerLength = parseInt(val);
-                        await this.plugin.saveSettings();
-                    });
-            });
-
-        new Setting(containerEl)
-            .setName("Front matter provider")
-            .addExtraButton(button => button
-                .setIcon("link")
-                .setTooltip("Obsidian Front-Matter wiki")
-                .onClick(() => window.open("https://help.obsidian.md/Advanced+topics/YAML+front+matter")))
-            .setHeading();
-
-        this.createEnabledSetting("frontMatterProviderEnabled", "Whether the front matter provider is enabled", containerEl);
-
-        new Setting(containerEl)
-            .setName("Ignore case")
-            .setDesc("Whether the Front matter provider should ignore the casing of the typed text. If so, the input 'MaThbb' could suggest 'mathbb'.")
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.frontMatterIgnoreCase)
-                .onChange(async val => {
-                    this.plugin.settings.frontMatterIgnoreCase = val;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName("Add suffix to tag completion")
-            .setDesc("Whether each completed tag should be suffixed with a comma or a newline (when typing in a multi-line list). Allows faster insertion of multiple tags.")
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.frontMatterTagAppendSuffix)
-                .onChange(async val => {
-                    this.plugin.settings.frontMatterTagAppendSuffix = val;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName("File scanner provider")
-            .setHeading()
-            .addExtraButton(button => button
-                .setIcon("search")
-                .setTooltip("Immediately scan all .md files currently in your vault.")
-                .onClick(() => {
-                    new ConfirmationModal(this.plugin.app,
-                        "Start scanning?",
-                        "Depending on the size of your vault and computer, this may take a while.",
-                        button => button
-                            .setButtonText("Scan")
-                            .setCta(),
-                        async () => {
-                            await FileScanner.scanFiles(this.plugin.settings, this.plugin.app.vault.getMarkdownFiles());
-                        },
-                    ).open();
-                }))
-            .addExtraButton(button => button
-                .setIcon("trash")
-                .setTooltip("Delete all known words.")
+    private displayWordLists(containerEl: HTMLElement) {
+        const group = new SettingGroup(containerEl).setHeading("Word lists").addExtraButton((b) =>
+            b
+                .setIcon("refresh-cw")
+                .setTooltip("Reload word lists")
                 .onClick(async () => {
-                    new ConfirmationModal(this.plugin.app,
-                        "Delete all known words?",
-                        "This will delete all words that have been scanned. No suggestions from this provider will show up anymore until new files are scanned.",
-                        button => button
-                            .setButtonText("Delete")
-                            .setWarning(),
-                        async () => {
-                            await FileScanner.deleteAllWords(this.plugin.app.vault);
-                        },
-                    ).open();
-                }));
-
-        this.createEnabledSetting("fileScannerProviderEnabled", "Whether or not the file scanner provider is enabled.", containerEl);
-
-        new Setting(containerEl)
-            .setName("Scan active file")
-            .setDesc("If this setting is enabled, the currently opened file will be scanned to find new words.")
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.fileScannerScanCurrent)
-                .onChange(async val => {
-                    this.plugin.settings.fileScannerScanCurrent = val;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName("Word list provider")
-            .setHeading();
-
-        this.createEnabledSetting("wordListProviderEnabled", "Whether or not the word list provider is enabled", containerEl);
+                    await this.reloadWords();
+                    this.display();
+                }),
+        );
+        this.toggle(group, "wordListProviderEnabled", "Enabled", "Suggest words from word list files.");
 
         const fileInput = createEl("input", {
-            attr: {
-                type: "file",
-            }
+            attr: { type: "file", multiple: true, accept: ".txt,.dic,.lst,text/plain" },
         });
-
         fileInput.onchange = async () => {
-            const files = fileInput.files;
-            if (files.length < 1)
-                return;
-
+            const files = Array.from(fileInput.files ?? []);
             let changed = false;
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
-
+            for (const file of files) {
                 try {
-                    const buf = await file.arrayBuffer();
-                    const encoding = detect(Buffer.from(buf.slice(0, 1024))).encoding;
-                    const text = new TextDecoder(encoding).decode(buf);
-                    const success = await WordList.importWordList(this.app.vault, file.name, text);
+                    const success = await this.plugin.wordList.importWordList(
+                        file.name,
+                        decodeText(await file.arrayBuffer()),
+                    );
                     changed ||= success;
-
-                    if (!success)
-                        new Notice("Unable to import " + file.name + " because it already exists!");
+                    if (!success) new Notice(`Unable to import ${file.name} because it already exists.`);
                 } catch (e) {
                     console.error(e);
                     new Notice("Error while importing " + file.name);
                 }
             }
-
-            // Only refresh if something was added
-            if (!changed)
-                return;
-
+            fileInput.value = "";
+            if (!changed) return;
             await this.reloadWords();
             this.display();
-        }
+        };
 
-        new Setting(containerEl)
-            .setName('Word list files')
-            .setDesc('A list of files which contain words to be used as suggestions. Each word should be on its own line.')
-            .addExtraButton(button => button
-                .setIcon("switch")
-                .setTooltip("Reload")
-                .onClick(async () => {
-                    await this.reloadWords();
-                    //Refresh because loadFromFiles might have removed an invalid file
-                    this.display();
-                }))
-            .addButton(button => {
-                button.buttonEl.appendChild(fileInput);
-                button
-                    .setButtonText("+")
-                    .setCta()
-                    .onClick(() => fileInput.click());
-            });
+        group.addSetting((s) =>
+            s
+                .setName("Word list files")
+                .setDesc("Text files with one word per line.")
+                .addButton((b) =>
+                    b
+                        .setButtonText("Import")
+                        .setCta()
+                        .onClick(() => fileInput.click()),
+                ),
+        );
 
-        const wordListDiv = containerEl.createDiv();
-        WordList.getRelativeFilePaths(this.app.vault).then((names) => {
-            for (const name of names) {
-                new Setting(wordListDiv)
-                    .setName(name)
-                    .addExtraButton((button) => button
-                        .setIcon("trash")
-                        .setTooltip("Remove")
-                        .onClick(async () => {
-                            new ConfirmationModal(
-                                this.app,
-                                "Delete " + name + "?",
-                                "The file will be removed and the words inside of it won't show up as suggestions anymore.",
-                                button => button
-                                    .setButtonText("Delete")
-                                    .setWarning(),
-                                async () => {
-                                    await WordList.deleteWordList(this.app.vault, name);
-                                    await this.reloadWords();
-                                    this.display();
-                                }).open();
-                        })
-                    ).settingEl.addClass("completr-settings-list-item");
+        void this.plugin.wordList.getFilePaths().then((paths) => {
+            for (const path of paths) {
+                group.addSetting((s) =>
+                    s.setName(path.substring(path.lastIndexOf("/") + 1)).addExtraButton((b) =>
+                        b
+                            .setIcon("trash")
+                            .setTooltip("Remove")
+                            .onClick(() =>
+                                new ConfirmationModal(
+                                    this.app,
+                                    `Delete ${path.substring(path.lastIndexOf("/") + 1)}?`,
+                                    "The file will be deleted and its words won't be suggested anymore.",
+                                    (b) => b.setButtonText("Delete").setWarning(),
+                                    async () => {
+                                        await this.plugin.wordList.deleteWordList(path);
+                                        await this.reloadWords();
+                                        this.display();
+                                    },
+                                ).open(),
+                            ),
+                    ),
+                );
             }
         });
+    }
 
-        new Setting(containerEl)
-            .setName("Callout provider")
-            .setHeading();
+    private displayCallouts(containerEl: HTMLElement) {
+        const group = new SettingGroup(containerEl).setHeading("Callouts");
+        this.toggle(group, "calloutProviderEnabled", "Enabled", "Suggest callout types after typing '> [!'.");
+        const calloutManager = isCalloutManagerInstalled(this.app);
+        this.dropdown(
+            group,
+            "calloutProviderSource",
+            "Source",
+            calloutManager
+                ? "Where the callout types come from."
+                : "Install the Callout Manager plugin to use the callouts configured there.",
+            {
+                [CalloutProviderSource.COMPLETR]: "Completr (callout_suggestions.json)",
+                ...(calloutManager || this.settings.calloutProviderSource === CalloutProviderSource.CALLOUT_MANAGER
+                    ? { [CalloutProviderSource.CALLOUT_MANAGER]: "Callout Manager" }
+                    : {}),
+            },
+            async () => {
+                const error = await this.plugin.callout.load(this.settings);
+                if (error) new Notice("Completr: " + error);
+            },
+        );
+    }
 
-        this.createEnabledSetting("calloutProviderEnabled", "Whether or not the callout provider is enabled", containerEl);
-        new Setting(containerEl)
-            .setName("Source")
-            .setDesc("Where callout suggestions come from.")
-            .addDropdown(component => {
-                component.addOption("Completr", CalloutProviderSource.COMPLETR)
-                    .setValue(CalloutProviderSource.COMPLETR) // Default option.
-                    .onChange(async (value) => {
-                        this.plugin.settings.calloutProviderSource = value as CalloutProviderSource;
-                        await this.plugin.saveSettings();
-                    });
+    private displayBlacklist(containerEl: HTMLElement) {
+        const { blacklist } = this.plugin;
+        const group = new SettingGroup(containerEl).setHeading("Blacklist");
+        group.addSetting((s) =>
+            s.setDesc(
+                blacklist.size > 0
+                    ? "These suggestions are never shown. Add more by selecting a suggestion and pressing Shift+D."
+                    : "No suggestions are blacklisted. Hide a suggestion by selecting it in the popup and pressing Shift+D.",
+            ),
+        );
+        if (blacklist.size === 0) return;
 
-                if (isCalloutManagerInstalled()) {
-                    component.addOption("Callout Manager", CalloutProviderSource.CALLOUT_MANAGER);
-                    if (this.plugin.settings.calloutProviderSource === CalloutProviderSource.CALLOUT_MANAGER) {
-                        component.setValue(this.plugin.settings.calloutProviderSource);
-                    }
+        group.addSearch((search) =>
+            search.setPlaceholder("Filter...").onChange((query) => {
+                const q = query.toLowerCase();
+                for (const el of Array.from(group.listEl.querySelectorAll<HTMLElement>(".completr-blacklist-item"))) {
+                    el.toggle((el.dataset.entry ?? "").toLowerCase().includes(q));
                 }
-            })
+            }),
+        );
+        for (const entry of blacklist.values().sort()) {
+            group.addSetting((s) => {
+                s.settingEl.addClass("completr-blacklist-item");
+                s.settingEl.dataset.entry = entry;
+                s.setName(entry).addExtraButton((b) =>
+                    b
+                        .setIcon("x")
+                        .setTooltip("Remove from blacklist")
+                        .onClick(async () => {
+                            await blacklist.remove(entry);
+                            this.plugin.latex.rebuildIndex();
+                            this.display();
+                        }),
+                );
+            });
+        }
     }
 
     private async reloadWords() {
-        if (this.isReloadingWords)
-            return;
-
+        if (this.isReloadingWords) return;
         this.isReloadingWords = true;
-        const count = await WordList.loadFromFiles(this.app.vault, this.plugin.settings);
-        this.isReloadingWords = false;
-
-        new Notice(`Loaded ${count} words`);
-    }
-
-    private createEnabledSetting(propertyName: keyof CompletrSettings, desc: string, container: HTMLElement) {
-        new Setting(container)
-            .setName("Enabled")
-            .setDesc(desc)
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings[propertyName] as boolean)
-                //@ts-ignore
-                .onChange(async (val) => {
-                    // @ts-ignore
-                    this.plugin.settings[propertyName] = val;
-                    await this.plugin.saveSettings();
-                }));
+        try {
+            const count = await this.plugin.wordList.load(this.settings);
+            new Notice(`Completr: Loaded ${count} words`);
+        } finally {
+            this.isReloadingWords = false;
+        }
     }
 }
 
 class ConfirmationModal extends Modal {
-
-    constructor(app: App, title: string, body: string, buttonCallback: (button: ButtonComponent) => void, clickCallback: () => Promise<void>) {
+    constructor(
+        app: App,
+        title: string,
+        body: string,
+        configureButton: (button: ButtonComponent) => void,
+        onConfirm: () => Promise<unknown>,
+    ) {
         super(app);
-        this.titleEl.setText(title);
-        this.contentEl.setText(body);
-        new Setting(this.modalEl)
-            .addButton(button => {
-                buttonCallback(button);
-                button.onClick(async () => {
-                    await clickCallback();
+        this.setTitle(title);
+        this.contentEl.createEl("p", { text: body });
+        new Setting(this.contentEl)
+            .addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+            .addButton((b) => {
+                configureButton(b);
+                b.onClick(async () => {
+                    b.setDisabled(true);
+                    await onConfirm();
                     this.close();
-                })
-            })
-            .addButton(button => button
-                .setButtonText("Cancel")
-                .onClick(() => this.close())).settingEl.addClass("completr-settings-no-border");
+                });
+            });
+    }
+}
+
+class LatexCommandModal extends Modal {
+    constructor(app: App, onSubmit: (displayName: string, replacement: string) => Promise<void>) {
+        super(app);
+        this.setTitle("Add LaTeX command");
+        let displayName = "";
+        let replacement = "";
+        new Setting(this.contentEl)
+            .setName("Replacement")
+            .setDesc("The inserted text. # marks a placeholder, ~ the final cursor position. May span multiple lines.")
+            .addTextArea((t) => {
+                t.inputEl.rows = 4;
+                t.inputEl.addClass("completr-latex-replacement");
+                t.setPlaceholder("\\frac{#}{#}").onChange((v) => (replacement = v));
+            });
+        new Setting(this.contentEl)
+            .setName("Display name")
+            .setDesc("Shown in the popup and used for matching. Defaults to the replacement.")
+            .addText((t) => t.setPlaceholder("\\frac{#}{#}").onChange((v) => (displayName = v)));
+        new Setting(this.contentEl).addButton((b) =>
+            b
+                .setButtonText("Add")
+                .setCta()
+                .onClick(async () => {
+                    if (!replacement.trim()) {
+                        new Notice("The replacement can't be empty.");
+                        return;
+                    }
+                    const name = (displayName || replacement).replace(/\n/g, " ");
+                    await onSubmit(name, replacement);
+                    this.close();
+                }),
+        );
     }
 }

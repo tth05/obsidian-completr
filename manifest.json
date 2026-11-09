@@ -1,9 +1,9 @@
 {
     "id": "obsidian-completr",
     "name": "Completr",
-    "version": "3.2.0",
-    "minAppVersion": "1.0.0",
-    "description": "This plugin provides advanced auto-completion functionality for LaTeX, Frontmatter and standard writing.",
+    "version": "4.0.0",
+    "minAppVersion": "1.12.0",
+    "description": "Advanced auto-completion for LaTeX, front matter, callouts and regular writing.",
     "author": "tth05",
     "authorUrl": "https://github.com/tth05",
     "isDesktopOnly": true

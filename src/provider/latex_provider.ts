@@ -1,1179 +1,191 @@
-import { Suggestion, SuggestionContext, SuggestionProvider } from "./provider";
-import { CompletrSettings, intoCompletrPath } from "../settings";
-import { BlockType, getLatexBlockType, maybeLowerCase } from "../editor_helpers";
-import { Notice, Vault } from "obsidian";
-import { SuggestionBlacklist } from "./blacklist";
+import type { DataFiles } from "../data_files.ts";
+import { getLatexContext } from "../editor_context.ts";
+import type { CompletrSettings } from "../settings.ts";
+import type { SuggestionBlacklist } from "./blacklist.ts";
+import { DEFAULT_LATEX_COMMANDS, DEFAULT_LATEX_ENVIRONMENTS } from "./latex_commands.ts";
+import { type Suggestion, type SuggestionContext, type SuggestionProvider, suggestion } from "./provider.ts";
 
-function substringUntil(str: string, delimiter: string): string {
-    let index = str.indexOf(delimiter);
-    if (index === -1)
-        return str;
+export const CUSTOM_LATEX_COMMANDS_FILE = "latex_commands.json";
 
-    return str.substring(0, index);
+export interface LatexCommand {
+    displayName: string;
+    replacement: string;
 }
 
-const LATEX_COMMANDS_PATH = "latex_commands.json";
-
-class LatexSuggestionProvider implements SuggestionProvider {
-
-    private loadedCommands: Suggestion[] = [];
-
-    getSuggestions(context: SuggestionContext, settings: CompletrSettings): Suggestion[] {
-        if (!settings.latexProviderEnabled || !context.query || context.query.length < settings.latexMinWordTriggerLength)
-            return [];
-
-        let editor = context.editor;
-
-        //Check if we're in a LaTeX context
-        const latexBlockType = getLatexBlockType(editor, context.start, settings.latexTriggerInCodeBlocks);
-        const isSingleBlock = latexBlockType === BlockType.DOLLAR_SINGLE;
-        if (!latexBlockType)
-            return [];
-
-        const query = maybeLowerCase(context.query, settings.latexIgnoreCase);
-        const isSeparatorBackslash = context.separatorChar === "\\";
-
-        return this.loadedCommands.filter((s) => s.getDisplayNameLowerCase(settings.latexIgnoreCase).contains(query))
-            .map((s) => {
-                let replacement = s.replacement;
-                replacement = isSeparatorBackslash ? replacement.substring(1) : replacement;
-                replacement = isSingleBlock ? replacement.replace(/\n/g, "") : replacement;
-
-                return ({
-                    displayName: s.displayName,
-                    replacement: replacement,
-                    priority: s.getDisplayNameLowerCase(settings.latexIgnoreCase).indexOf(query),
-                });
-            })
-            .sort((a, b) => {
-                //This makes sure that matches like "\vee" are ranked before "\curlyvee" if the query is "\vee"
-                let val = a.priority - b.priority;
-                if (val == 0)
-                    val = substringUntil(a.displayName, "{").length - substringUntil(b.displayName, "{").length;
-                return val;
-            })
-            .map(obj => new Suggestion(obj.displayName, obj.replacement));
-    }
-
-    async loadCommands(vault: Vault) {
-        const path = intoCompletrPath(vault, LATEX_COMMANDS_PATH);
-        if (!(await vault.adapter.exists(path))) {
-            const defaultCommands = generateDefaultLatexCommands();
-            await vault.adapter.write(path, JSON.stringify(defaultCommands, null, 2));
-            this.loadedCommands = defaultCommands;
-        } else {
-            const data = await vault.adapter.read(path);
-            try {
-                const commands: Suggestion[] = (JSON.parse(data) as any[])
-                    .map(obj => typeof obj === "string" ?
-                        Suggestion.fromString(obj) :
-                        new Suggestion(obj.displayName, obj.replacement)
-                    );
-                const invalidCommand = commands.find(c => c.displayName.includes("\n"));
-                if (invalidCommand)
-                    throw new Error("Display name cannot contain a newline: " + invalidCommand.displayName);
-
-                this.loadedCommands = commands;
-            } catch (e) {
-                console.log("Completr latex commands parse error:", e.message);
-                new Notice("Failed to parse latex commands file " + path + ". Using default commands.", 3000);
-                this.loadedCommands = generateDefaultLatexCommands();
-            }
-        }
-
-        this.loadedCommands = SuggestionBlacklist.filter(this.loadedCommands);
-    }
+interface IndexedCommand {
+    suggestion: Suggestion;
+    lowerCaseName: string;
+    /** Length of the name up to the first "{", used for ranking ("\vee" before "\veebar"). */
+    nameLength: number;
 }
 
-export const Latex = new LatexSuggestionProvider();
-
-function generateEnvironments(environments: { name: string, paramCount: number, hasStarVersion: boolean }[]): Suggestion[] {
-    const result = [];
-
-    for (let i = 0; i < environments.length; i++) {
-        const environment = environments[i];
-        if (environment.hasStarVersion) {
-            environments.push({ ...environment, name: environment.name + "*", hasStarVersion: false });
+function environmentCommands(): LatexCommand[] {
+    const result: LatexCommand[] = [];
+    for (const [name, paramCount, hasStar] of DEFAULT_LATEX_ENVIRONMENTS) {
+        for (const env of hasStar ? [name, name + "*"] : [name]) {
+            result.push({
+                displayName: `\\begin{${env}}...`,
+                replacement: `\\begin{${env}}${"{#}".repeat(paramCount)}\n${paramCount < 1 ? "~\n" : ""}\\end{${env}}`,
+            });
         }
-
-        result.push(new Suggestion(
-            `\\begin{${environment.name}}...`,
-            `\\begin{${environment.name}}${"{#}".repeat(environment.paramCount)}\n` +
-            `${environment.paramCount < 1 ? "~\n" : ""}` +
-            `\\end{${environment.name}}`
-        ));
     }
-
     return result;
 }
 
-/*
- * Generates the default latex commands. This is a method to avoid any unnecessary initialization
+export function getBuiltInLatexCommands(): LatexCommand[] {
+    return [...environmentCommands(), ...DEFAULT_LATEX_COMMANDS.map((c) => ({ displayName: c, replacement: c }))];
+}
+
+/** Defaults of v3 that were changed in v4 (old -> new). Needed to recognize unmodified v3 command files. */
+const CHANGED_V3_DEFAULTS = new Map(
+    ["int", "prod", "sum"].map((op) => [`\\${op}^{#}_{#}`, `\\${op}_{#}^{#}`] as const),
+);
+
+/** Parses the contents of a commands file: an array of strings or {displayName, replacement} objects. */
+export function parseLatexCommands(json: string): LatexCommand[] {
+    const data: unknown = JSON.parse(json);
+    if (!Array.isArray(data)) throw new Error("The JSON root must be an array");
+
+    return data.map((entry: unknown, i) => {
+        if (typeof entry === "string") return { displayName: entry, replacement: entry };
+        if (entry && typeof entry === "object") {
+            const { displayName, replacement } = entry as Partial<LatexCommand>;
+            if (typeof displayName === "string" && typeof replacement === "string") {
+                if (displayName.includes("\n"))
+                    throw new Error("Display name cannot contain a newline: " + displayName);
+                return { displayName, replacement };
+            }
+        }
+        throw new Error(`Invalid entry at index ${i}: ${JSON.stringify(entry)}`);
+    });
+}
+
+export function serializeLatexCommands(commands: LatexCommand[]): string {
+    return JSON.stringify(
+        commands.map((c) => (c.displayName === c.replacement ? c.displayName : c)),
+        null,
+        2,
+    );
+}
+
+/**
+ * Up to v3, the commands file contained all default commands. Splits such a file into the user's own commands and the
+ * default commands the user deleted.
  */
-function generateDefaultLatexCommands(): Suggestion[] {
-    return [
-        ...generateEnvironments([
-            { name: "align", paramCount: 0, hasStarVersion: true },
-            { name: "alignat", paramCount: 1, hasStarVersion: true },
-            { name: "aligned", paramCount: 0, hasStarVersion: false },
-            { name: "alignedat", paramCount: 1, hasStarVersion: false },
-            { name: "array", paramCount: 1, hasStarVersion: false },
-            { name: "bmatrix", paramCount: 0, hasStarVersion: true },
-            { name: "Bmatrix", paramCount: 0, hasStarVersion: true },
-            { name: "bsmallmatrix", paramCount: 0, hasStarVersion: true },
-            { name: "Bsmallmatrix", paramCount: 0, hasStarVersion: true },
-            { name: "cases", paramCount: 0, hasStarVersion: true },
-            { name: "crampedsubarray", paramCount: 1, hasStarVersion: false },
-            { name: "dcases", paramCount: 0, hasStarVersion: true },
-            { name: "drcases", paramCount: 0, hasStarVersion: true },
-            { name: "empheq", paramCount: 2, hasStarVersion: false },
-            { name: "eqnarray", paramCount: 0, hasStarVersion: true },
-            { name: "equation", paramCount: 0, hasStarVersion: true },
-            { name: "flalign", paramCount: 0, hasStarVersion: true },
-            { name: "gather", paramCount: 0, hasStarVersion: true },
-            { name: "gathered", paramCount: 0, hasStarVersion: false },
-            { name: "lgathered", paramCount: 0, hasStarVersion: false },
-            { name: "matrix", paramCount: 0, hasStarVersion: true },
-            { name: "multiline", paramCount: 0, hasStarVersion: true },
-            { name: "multilined", paramCount: 0, hasStarVersion: false },
-            { name: "numcases", paramCount: 1, hasStarVersion: false },
-            { name: "pmatrix", paramCount: 0, hasStarVersion: true },
-            { name: "prooftree", paramCount: 0, hasStarVersion: false },
-            { name: "psmallmatrix", paramCount: 0, hasStarVersion: true },
-            { name: "rcases", paramCount: 0, hasStarVersion: true },
-            { name: "rgathered", paramCount: 0, hasStarVersion: false },
-            { name: "smallmatrix", paramCount: 0, hasStarVersion: true },
-            { name: "split", paramCount: 0, hasStarVersion: false },
-            { name: "spreadlines", paramCount: 1, hasStarVersion: false },
-            { name: "subarray", paramCount: 1, hasStarVersion: false },
-            { name: "subnumcases", paramCount: 1, hasStarVersion: false },
-            { name: "vmatrix", paramCount: 0, hasStarVersion: true },
-            { name: "Vmatrix", paramCount: 0, hasStarVersion: true },
-            { name: "vsmallmatrix", paramCount: 0, hasStarVersion: true },
-            { name: "Vsmallmatrix", paramCount: 0, hasStarVersion: true },
-            { name: "xalignat", paramCount: 1, hasStarVersion: true },
-            { name: "xxalignat", paramCount: 1, hasStarVersion: false },
-        ]),
-        Suggestion.fromString("\\above{#}{#}"),
-        Suggestion.fromString("\\verb|#|"),
-        Suggestion.fromString("\\left\\"),
-        Suggestion.fromString("\\right\\"),
-        Suggestion.fromString("\\acute{#}"),
-        Suggestion.fromString("\\aleph"),
-        Suggestion.fromString("\\alpha"),
-        Suggestion.fromString("\\amalg"),
-        Suggestion.fromString("\\And"),
-        Suggestion.fromString("\\angle"),
-        Suggestion.fromString("\\approx"),
-        Suggestion.fromString("\\approxeq"),
-        Suggestion.fromString("\\arccos"),
-        Suggestion.fromString("\\arcsin"),
-        Suggestion.fromString("\\arctan"),
-        Suggestion.fromString("\\arg"),
-        Suggestion.fromString("\\array{#}"),
-        Suggestion.fromString("\\arrowvert"),
-        Suggestion.fromString("\\Arrowvert"),
-        Suggestion.fromString("\\ast"),
-        Suggestion.fromString("\\asymp"),
-        Suggestion.fromString("\\atop"),
-        Suggestion.fromString("\\backepsilon"),
-        Suggestion.fromString("\\backprime"),
-        Suggestion.fromString("\\backsim"),
-        Suggestion.fromString("\\backsimeq"),
-        Suggestion.fromString("\\backslash"),
-        Suggestion.fromString("\\bar{#}"),
-        Suggestion.fromString("\\barwedge"),
-        Suggestion.fromString("\\Bbb{#}"),
-        Suggestion.fromString("\\Bbbk"),
-        Suggestion.fromString("\\bbFont"),
-        Suggestion.fromString("\\bbox{#}"),
-        Suggestion.fromString("\\bcancel{#}"),
-        Suggestion.fromString("\\because"),
-        Suggestion.fromString("\\beta"),
-        Suggestion.fromString("\\beth"),
-        Suggestion.fromString("\\between"),
-        Suggestion.fromString("\\bf"),
-        Suggestion.fromString("\\bigcap"),
-        Suggestion.fromString("\\bigcirc"),
-        Suggestion.fromString("\\bigcup"),
-        Suggestion.fromString("\\bigodot"),
-        Suggestion.fromString("\\bigoplus"),
-        Suggestion.fromString("\\bigotimes"),
-        Suggestion.fromString("\\bigsqcup"),
-        Suggestion.fromString("\\bigstar"),
-        Suggestion.fromString("\\bigtimes"),
-        Suggestion.fromString("\\bigtriangledown"),
-        Suggestion.fromString("\\bigtriangleup"),
-        Suggestion.fromString("\\biguplus"),
-        Suggestion.fromString("\\bigvee"),
-        Suggestion.fromString("\\bigwedge"),
-        Suggestion.fromString("\\binom{#}{#}"),
-        Suggestion.fromString("\\blacklozenge"),
-        Suggestion.fromString("\\blacksquare"),
-        Suggestion.fromString("\\blacktriangle"),
-        Suggestion.fromString("\\blacktriangledown"),
-        Suggestion.fromString("\\blacktriangleleft"),
-        Suggestion.fromString("\\blacktriangleright"),
-        Suggestion.fromString("\\bmod"),
-        Suggestion.fromString("\\boldsymbol{#}"),
-        Suggestion.fromString("\\bot"),
-        Suggestion.fromString("\\bowtie"),
-        Suggestion.fromString("\\Box"),
-        Suggestion.fromString("\\boxdot"),
-        Suggestion.fromString("\\boxed{#}"),
-        Suggestion.fromString("\\boxminus"),
-        Suggestion.fromString("\\boxplus"),
-        Suggestion.fromString("\\boxtimes"),
-        Suggestion.fromString("\\bra{#}"),
-        Suggestion.fromString("\\Bra{#}"),
-        Suggestion.fromString("\\brace"),
-        Suggestion.fromString("\\bracevert"),
-        Suggestion.fromString("\\brack"),
-        Suggestion.fromString("\\braket{#}"),
-        Suggestion.fromString("\\Braket{#}"),
-        Suggestion.fromString("\\breve{#}"),
-        Suggestion.fromString("\\bullet"),
-        Suggestion.fromString("\\bumpeq"),
-        Suggestion.fromString("\\Bumpeq"),
-        Suggestion.fromString("\\cal"),
-        Suggestion.fromString("\\cancel{#}"),
-        Suggestion.fromString("\\cancelto{#}{#}"),
-        Suggestion.fromString("\\cap"),
-        Suggestion.fromString("\\Cap"),
-        Suggestion.fromString("\\cases{#}"),
-        Suggestion.fromString("\\cdot"),
-        Suggestion.fromString("\\cdotp"),
-        Suggestion.fromString("\\cdots"),
-        Suggestion.fromString("\\celsius"),
-        Suggestion.fromString("\\centercolon"),
-        Suggestion.fromString("\\centerdot"),
-        Suggestion.fromString("\\centernot{#}"),
-        Suggestion.fromString("\\centerOver{#}{#}"),
-        Suggestion.fromString("\\cfrac{#}{#}"),
-        Suggestion.fromString("\\check{#}"),
-        Suggestion.fromString("\\checkmark"),
-        Suggestion.fromString("\\chi"),
-        Suggestion.fromString("\\choose"),
-        Suggestion.fromString("\\circ"),
-        Suggestion.fromString("\\circeq"),
-        Suggestion.fromString("\\circlearrowleft"),
-        Suggestion.fromString("\\circlearrowright"),
-        Suggestion.fromString("\\circledast"),
-        Suggestion.fromString("\\circledcirc"),
-        Suggestion.fromString("\\circleddash"),
-        Suggestion.fromString("\\circledR"),
-        Suggestion.fromString("\\circledS"),
-        Suggestion.fromString("\\clap{#}"),
-        Suggestion.fromString("\\class{#}{#}"),
-        Suggestion.fromString("\\clubsuit"),
-        Suggestion.fromString("\\colon"),
-        Suggestion.fromString("\\colonapprox"),
-        Suggestion.fromString("\\Colonapprox"),
-        Suggestion.fromString("\\coloneq"),
-        Suggestion.fromString("\\Coloneq"),
-        Suggestion.fromString("\\coloneqq"),
-        Suggestion.fromString("\\Coloneqq"),
-        Suggestion.fromString("\\colonsim"),
-        Suggestion.fromString("\\Colonsim"),
-        Suggestion.fromString("\\color{#}"),
-        Suggestion.fromString("\\colorbox{#}{#}"),
-        Suggestion.fromString("\\complement"),
-        Suggestion.fromString("\\cong"),
-        Suggestion.fromString("\\coprod"),
-        Suggestion.fromString("\\cos"),
-        Suggestion.fromString("\\cosh"),
-        Suggestion.fromString("\\cot"),
-        Suggestion.fromString("\\coth"),
-        Suggestion.fromString("\\cramped{#}"),
-        Suggestion.fromString("\\crampedclap{#}"),
-        Suggestion.fromString("\\crampedllap{#}"),
-        Suggestion.fromString("\\crampedrlap{#}"),
-        Suggestion.fromString("\\crampedsubstack{#}"),
-        Suggestion.fromString("\\csc"),
-        Suggestion.fromString("\\cssId{#}{#}"),
-        Suggestion.fromString("\\cup"),
-        Suggestion.fromString("\\Cup"),
-        Suggestion.fromString("\\curlyeqprec"),
-        Suggestion.fromString("\\curlyeqsucc"),
-        Suggestion.fromString("\\curlyvee"),
-        Suggestion.fromString("\\curlywedge"),
-        Suggestion.fromString("\\curvearrowleft"),
-        Suggestion.fromString("\\curvearrowright"),
-        Suggestion.fromString("\\dagger"),
-        Suggestion.fromString("\\daleth"),
-        Suggestion.fromString("\\dashleftarrow"),
-        Suggestion.fromString("\\dashrightarrow"),
-        Suggestion.fromString("\\dashv"),
-        Suggestion.fromString("\\dbinom{#}{#}"),
-        Suggestion.fromString("\\dblcolon"),
-        Suggestion.fromString("\\ddagger"),
-        Suggestion.fromString("\\ddddot{#}"),
-        Suggestion.fromString("\\dddot{#}"),
-        Suggestion.fromString("\\ddot{#}"),
-        Suggestion.fromString("\\ddots"),
-        Suggestion.fromString("\\DeclareMathOperator{#}{#}"),
-        Suggestion.fromString("\\DeclarePairedDelimiters{#}{#}{#}"),
-        Suggestion.fromString("\\DeclarePairedDelimitersX{#}{#}{#}{#}"),
-        Suggestion.fromString("\\DeclarePairedDelimitersXPP{#}{#}{#}{#}{#}{#}"),
-        Suggestion.fromString("\\deg"),
-        Suggestion.fromString("\\degree"),
-        Suggestion.fromString("\\delta"),
-        Suggestion.fromString("\\Delta"),
-        Suggestion.fromString("\\det"),
-        Suggestion.fromString("\\dfrac{#}{#}"),
-        Suggestion.fromString("\\diagdown"),
-        Suggestion.fromString("\\diagup"),
-        Suggestion.fromString("\\diamond"),
-        Suggestion.fromString("\\Diamond"),
-        Suggestion.fromString("\\diamondsuit"),
-        Suggestion.fromString("\\digamma"),
-        Suggestion.fromString("\\dim"),
-        Suggestion.fromString("\\displaylines{#}"),
-        Suggestion.fromString("\\displaystyle"),
-        Suggestion.fromString("\\div"),
-        Suggestion.fromString("\\divideontimes"),
-        Suggestion.fromString("\\divsymbol"),
-        Suggestion.fromString("\\dot{#}"),
-        Suggestion.fromString("\\doteq"),
-        Suggestion.fromString("\\Doteq"),
-        Suggestion.fromString("\\doteqdot"),
-        Suggestion.fromString("\\dotplus"),
-        Suggestion.fromString("\\dots"),
-        Suggestion.fromString("\\dotsb"),
-        Suggestion.fromString("\\dotsc"),
-        Suggestion.fromString("\\dotsi"),
-        Suggestion.fromString("\\dotsm"),
-        Suggestion.fromString("\\dotso"),
-        Suggestion.fromString("\\doublebarwedge"),
-        Suggestion.fromString("\\doublecap"),
-        Suggestion.fromString("\\doublecup"),
-        Suggestion.fromString("\\downarrow"),
-        Suggestion.fromString("\\Downarrow"),
-        Suggestion.fromString("\\downdownarrows"),
-        Suggestion.fromString("\\downharpoonleft"),
-        Suggestion.fromString("\\downharpoonright"),
-        Suggestion.fromString("\\ell"),
-        Suggestion.fromString("\\empheqbiglangle"),
-        Suggestion.fromString("\\empheqbiglbrace"),
-        Suggestion.fromString("\\empheqbiglbrack"),
-        Suggestion.fromString("\\empheqbiglceil"),
-        Suggestion.fromString("\\empheqbiglfloor"),
-        Suggestion.fromString("\\empheqbiglparen"),
-        Suggestion.fromString("\\empheqbiglvert"),
-        Suggestion.fromString("\\empheqbiglVert"),
-        Suggestion.fromString("\\empheqbigrangle"),
-        Suggestion.fromString("\\empheqbigrbrace"),
-        Suggestion.fromString("\\empheqbigrbrack"),
-        Suggestion.fromString("\\empheqbigrceil"),
-        Suggestion.fromString("\\empheqbigrfloor"),
-        Suggestion.fromString("\\empheqbigrparen"),
-        Suggestion.fromString("\\empheqbigrvert"),
-        Suggestion.fromString("\\empheqbigrVert"),
-        Suggestion.fromString("\\empheqlangle"),
-        Suggestion.fromString("\\empheqlbrace"),
-        Suggestion.fromString("\\empheqlbrack"),
-        Suggestion.fromString("\\empheqlceil"),
-        Suggestion.fromString("\\empheqlfloor"),
-        Suggestion.fromString("\\empheqlparen"),
-        Suggestion.fromString("\\empheqlvert"),
-        Suggestion.fromString("\\empheqlVert"),
-        Suggestion.fromString("\\empheqrangle"),
-        Suggestion.fromString("\\empheqrbrace"),
-        Suggestion.fromString("\\empheqrbrack"),
-        Suggestion.fromString("\\empheqrceil"),
-        Suggestion.fromString("\\empheqrfloor"),
-        Suggestion.fromString("\\empheqrparen"),
-        Suggestion.fromString("\\empheqrvert"),
-        Suggestion.fromString("\\empheqrVert"),
-        Suggestion.fromString("\\emptyset"),
-        Suggestion.fromString("\\enclose{#}{#}"),
-        Suggestion.fromString("\\enspace"),
-        Suggestion.fromString("\\epsilon"),
-        Suggestion.fromString("\\eqalign{#}"),
-        Suggestion.fromString("\\eqalignno{#}"),
-        Suggestion.fromString("\\eqcirc"),
-        Suggestion.fromString("\\eqcolon"),
-        Suggestion.fromString("\\Eqcolon"),
-        Suggestion.fromString("\\eqqcolon"),
-        Suggestion.fromString("\\Eqqcolon"),
-        Suggestion.fromString("\\eqref{#}"),
-        Suggestion.fromString("\\eqsim"),
-        Suggestion.fromString("\\eqslantgtr"),
-        Suggestion.fromString("\\eqslantless"),
-        Suggestion.fromString("\\equiv"),
-        Suggestion.fromString("\\eta"),
-        Suggestion.fromString("\\eth"),
-        Suggestion.fromString("\\exists"),
-        Suggestion.fromString("\\exp"),
-        Suggestion.fromString("\\fallingdotseq"),
-        Suggestion.fromString("\\fbox{#}"),
-        Suggestion.fromString("\\fCenter"),
-        Suggestion.fromString("\\fcolorbox{#}{#}{#}"),
-        Suggestion.fromString("\\Finv"),
-        Suggestion.fromString("\\flat"),
-        Suggestion.fromString("\\forall"),
-        Suggestion.fromString("\\frac{#}{#}"),
-        Suggestion.fromString("\\frak"),
-        Suggestion.fromString("\\framebox{#}"),
-        Suggestion.fromString("\\frown"),
-        Suggestion.fromString("\\Game"),
-        Suggestion.fromString("\\gamma"),
-        Suggestion.fromString("\\Gamma"),
-        Suggestion.fromString("\\gcd"),
-        Suggestion.fromString("\\ge"),
-        Suggestion.fromString("\\geq"),
-        Suggestion.fromString("\\geqq"),
-        Suggestion.fromString("\\geqslant"),
-        Suggestion.fromString("\\gets"),
-        Suggestion.fromString("\\gg"),
-        Suggestion.fromString("\\ggg"),
-        Suggestion.fromString("\\gggtr"),
-        Suggestion.fromString("\\gimel"),
-        Suggestion.fromString("\\gnapprox"),
-        Suggestion.fromString("\\gneq"),
-        Suggestion.fromString("\\gneqq"),
-        Suggestion.fromString("\\gnsim"),
-        Suggestion.fromString("\\grave{#}"),
-        Suggestion.fromString("\\gt"),
-        Suggestion.fromString("\\gtrapprox"),
-        Suggestion.fromString("\\gtrdot"),
-        Suggestion.fromString("\\gtreqless"),
-        Suggestion.fromString("\\gtreqqless"),
-        Suggestion.fromString("\\gtrless"),
-        Suggestion.fromString("\\gtrsim"),
-        Suggestion.fromString("\\gvertneqq"),
-        Suggestion.fromString("\\hat{#}"),
-        Suggestion.fromString("\\hbar"),
-        Suggestion.fromString("\\hbox{#}"),
-        Suggestion.fromString("\\heartsuit"),
-        Suggestion.fromString("\\hline"),
-        Suggestion.fromString("\\hom"),
-        Suggestion.fromString("\\hookleftarrow"),
-        Suggestion.fromString("\\hookrightarrow"),
-        Suggestion.fromString("\\hphantom{#}"),
-        Suggestion.fromString("\\href{#}{#}"),
-        Suggestion.fromString("\\hslash"),
-        Suggestion.fromString("\\huge"),
-        Suggestion.fromString("\\Huge"),
-        Suggestion.fromString("\\idotsint"),
-        Suggestion.fromString("\\iff"),
-        Suggestion.fromString("\\iiiint"),
-        Suggestion.fromString("\\iiint"),
-        Suggestion.fromString("\\iint"),
-        Suggestion.fromString("\\Im"),
-        Suggestion.fromString("\\imath"),
-        Suggestion.fromString("\\impliedby"),
-        Suggestion.fromString("\\implies"),
-        Suggestion.fromString("\\in"),
-        Suggestion.fromString("\\inf"),
-        Suggestion.fromString("\\infty"),
-        Suggestion.fromString("\\injlim"),
-        Suggestion.fromString("\\int"),
-        Suggestion.fromString("\\int^{#}_{#}"),
-        Suggestion.fromString("\\intercal"),
-        Suggestion.fromString("\\intop"),
-        Suggestion.fromString("\\iota"),
-        Suggestion.fromString("\\it"),
-        Suggestion.fromString("\\jmath"),
-        Suggestion.fromString("\\Join"),
-        Suggestion.fromString("\\kappa"),
-        Suggestion.fromString("\\ker"),
-        Suggestion.fromString("\\ket{#}"),
-        Suggestion.fromString("\\Ket{#}"),
-        Suggestion.fromString("\\ketbra{#}{#}"),
-        Suggestion.fromString("\\Ketbra{#}{#}"),
-        Suggestion.fromString("\\label{#}"),
-        Suggestion.fromString("\\lambda"),
-        Suggestion.fromString("\\Lambda"),
-        Suggestion.fromString("\\land"),
-        Suggestion.fromString("\\langle"),
-        Suggestion.fromString("\\large"),
-        Suggestion.fromString("\\Large"),
-        Suggestion.fromString("\\LARGE"),
-        Suggestion.fromString("\\LaTeX"),
-        Suggestion.fromString("\\lbrace"),
-        Suggestion.fromString("\\lbrack"),
-        Suggestion.fromString("\\lceil"),
-        Suggestion.fromString("\\ldots"),
-        Suggestion.fromString("\\ldotp"),
-        Suggestion.fromString("\\le"),
-        Suggestion.fromString("\\leadsto"),
-        Suggestion.fromString("\\Leftarrow"),
-        Suggestion.fromString("\\leftarrow"),
-        Suggestion.fromString("\\leftarrowtail"),
-        Suggestion.fromString("\\leftharpoondown"),
-        Suggestion.fromString("\\leftharpoonup"),
-        Suggestion.fromString("\\leftleftarrows"),
-        Suggestion.fromString("\\Leftrightarrow"),
-        Suggestion.fromString("\\leftrightarrow"),
-        Suggestion.fromString("\\leftrightarrows"),
-        Suggestion.fromString("\\leftrightharpoons"),
-        Suggestion.fromString("\\leftrightsquigarrow"),
-        Suggestion.fromString("\\leftthreetimes"),
-        Suggestion.fromString("\\leq"),
-        Suggestion.fromString("\\leqalignno{#}"),
-        Suggestion.fromString("\\leqq"),
-        Suggestion.fromString("\\leqslant"),
-        Suggestion.fromString("\\lessapprox"),
-        Suggestion.fromString("\\lessdot"),
-        Suggestion.fromString("\\lesseqgtr"),
-        Suggestion.fromString("\\lesseqqgtr"),
-        Suggestion.fromString("\\lessgtr"),
-        Suggestion.fromString("\\lesssim"),
-        Suggestion.fromString("\\lfloor"),
-        Suggestion.fromString("\\lg"),
-        Suggestion.fromString("\\lgroup"),
-        Suggestion.fromString("\\lhd"),
-        Suggestion.fromString("\\lim"),
-        Suggestion.fromString("\\lim_{#}"),
-        Suggestion.fromString("\\liminf"),
-        Suggestion.fromString("\\limsup"),
-        Suggestion.fromString("\\ll"),
-        Suggestion.fromString("\\llap{#}"),
-        Suggestion.fromString("\\llcorner"),
-        Suggestion.fromString("\\Lleftarrow"),
-        Suggestion.fromString("\\lll"),
-        Suggestion.fromString("\\llless"),
-        Suggestion.fromString("\\lmoustache"),
-        Suggestion.fromString("\\ln"),
-        Suggestion.fromString("\\lnapprox"),
-        Suggestion.fromString("\\lneq"),
-        Suggestion.fromString("\\lneqq"),
-        Suggestion.fromString("\\lnot"),
-        Suggestion.fromString("\\lnsim"),
-        Suggestion.fromString("\\log"),
-        Suggestion.fromString("\\longleftarrow"),
-        Suggestion.fromString("\\Longleftarrow"),
-        Suggestion.fromString("\\Longleftrightarrow"),
-        Suggestion.fromString("\\longleftrightarrow"),
-        Suggestion.fromString("\\longleftrightarrows"),
-        Suggestion.fromString("\\longLeftrightharpoons"),
-        Suggestion.fromString("\\longmapsto"),
-        Suggestion.fromString("\\longrightarrow"),
-        Suggestion.fromString("\\Longrightarrow"),
-        Suggestion.fromString("\\longrightleftharpoons"),
-        Suggestion.fromString("\\longRightleftharpoons"),
-        Suggestion.fromString("\\looparrowleft"),
-        Suggestion.fromString("\\looparrowright"),
-        Suggestion.fromString("\\lor"),
-        Suggestion.fromString("\\lozenge"),
-        Suggestion.fromString("\\lparen"),
-        Suggestion.fromString("\\lrcorner"),
-        Suggestion.fromString("\\Lsh"),
-        Suggestion.fromString("\\lt"),
-        Suggestion.fromString("\\ltimes"),
-        Suggestion.fromString("\\lvert"),
-        Suggestion.fromString("\\lVert"),
-        Suggestion.fromString("\\lvertneqq"),
-        Suggestion.fromString("\\maltese"),
-        Suggestion.fromString("\\mapsto"),
-        Suggestion.fromString("\\mathbb{#}"),
-        Suggestion.fromString("\\mathbb{R}"),
-        Suggestion.fromString("\\mathbb{N}"),
-        Suggestion.fromString("\\mathbb{C}"),
-        Suggestion.fromString("\\mathbb{Z}"),
-        Suggestion.fromString("\\mathbb{Q}"),
-        Suggestion.fromString("\\mathbf{#}"),
-        Suggestion.fromString("\\mathbfcal{#}"),
-        Suggestion.fromString("\\mathbffrak{#}"),
-        Suggestion.fromString("\\mathbfit{#}"),
-        Suggestion.fromString("\\mathbfscr{#}"),
-        Suggestion.fromString("\\mathbfsf{#}"),
-        Suggestion.fromString("\\mathbfsfit{#}"),
-        Suggestion.fromString("\\mathbfsfup{#}"),
-        Suggestion.fromString("\\mathbfup{#}"),
-        Suggestion.fromString("\\mathbin{#}"),
-        Suggestion.fromString("\\mathcal{#}"),
-        Suggestion.fromString("\\mathchoice{#}{#}{#}{#}"),
-        Suggestion.fromString("\\mathclap{#}"),
-        Suggestion.fromString("\\mathclose{#}"),
-        Suggestion.fromString("\\mathfrak{#}"),
-        Suggestion.fromString("\\mathinner{#}"),
-        Suggestion.fromString("\\mathit{#}"),
-        Suggestion.fromString("\\mathllap{#}"),
-        Suggestion.fromString("\\mathmakebox{#}"),
-        Suggestion.fromString("\\mathmbox{#}"),
-        Suggestion.fromString("\\mathnormal{#}"),
-        Suggestion.fromString("\\mathop{#}"),
-        Suggestion.fromString("\\mathopen{#}"),
-        Suggestion.fromString("\\mathord{#}"),
-        Suggestion.fromString("\\mathpunct{#}"),
-        Suggestion.fromString("\\mathrel{#}"),
-        Suggestion.fromString("\\mathring{#}"),
-        Suggestion.fromString("\\mathrlap{#}"),
-        Suggestion.fromString("\\mathrm{#}"),
-        Suggestion.fromString("\\mathscr{#}"),
-        Suggestion.fromString("\\mathsf{#}"),
-        Suggestion.fromString("\\mathsfit{#}"),
-        Suggestion.fromString("\\mathsfup{#}"),
-        Suggestion.fromString("\\mathstrut"),
-        Suggestion.fromString("\\mathtip{#}{#}"),
-        Suggestion.fromString("\\mathtt{#}"),
-        Suggestion.fromString("\\mathup{#}"),
-        Suggestion.fromString("\\max"),
-        Suggestion.fromString("\\mbox{#}"),
-        Suggestion.fromString("\\measuredangle"),
-        Suggestion.fromString("\\mho"),
-        Suggestion.fromString("\\micro"),
-        Suggestion.fromString("\\mid"),
-        Suggestion.fromString("\\min"),
-        Suggestion.fromString("\\mit"),
-        Suggestion.fromString("\\mod{#}"),
-        Suggestion.fromString("\\models"),
-        Suggestion.fromString("\\mp"),
-        Suggestion.fromString("\\MTThinColon"),
-        Suggestion.fromString("\\mu"),
-        Suggestion.fromString("\\multimap"),
-        Suggestion.fromString("\\nabla"),
-        Suggestion.fromString("\\natural"),
-        Suggestion.fromString("\\ncong"),
-        Suggestion.fromString("\\ndownarrow"),
-        Suggestion.fromString("\\ne"),
-        Suggestion.fromString("\\nearrow"),
-        Suggestion.fromString("\\neg"),
-        Suggestion.fromString("\\negmedspace"),
-        Suggestion.fromString("\\negthickspace"),
-        Suggestion.fromString("\\negthinspace"),
-        Suggestion.fromString("\\neq"),
-        Suggestion.fromString("\\newcommand{#}{#}"),
-        Suggestion.fromString("\\newenvironment{#}{#}{#}"),
-        Suggestion.fromString("\\newline"),
-        Suggestion.fromString("\\newtagform{#}{#}{#}"),
-        Suggestion.fromString("\\nexists"),
-        Suggestion.fromString("\\ngeq"),
-        Suggestion.fromString("\\ngeqq"),
-        Suggestion.fromString("\\ngeqslant"),
-        Suggestion.fromString("\\ngtr"),
-        Suggestion.fromString("\\ni"),
-        Suggestion.fromString("\\nleftarrow"),
-        Suggestion.fromString("\\nLeftarrow"),
-        Suggestion.fromString("\\nleftrightarrow"),
-        Suggestion.fromString("\\nLeftrightarrow"),
-        Suggestion.fromString("\\nleq"),
-        Suggestion.fromString("\\nleqq"),
-        Suggestion.fromString("\\nleqslant"),
-        Suggestion.fromString("\\nless"),
-        Suggestion.fromString("\\nmid"),
-        Suggestion.fromString("\\nobreakspace"),
-        Suggestion.fromString("\\nonscript"),
-        Suggestion.fromString("\\nonumber"),
-        Suggestion.fromString("\\normalsize"),
-        Suggestion.fromString("\\not"),
-        Suggestion.fromString("\\notag"),
-        Suggestion.fromString("\\notChar"),
-        Suggestion.fromString("\\notin"),
-        Suggestion.fromString("\\nparallel"),
-        Suggestion.fromString("\\nprec"),
-        Suggestion.fromString("\\npreceq"),
-        Suggestion.fromString("\\nrightarrow"),
-        Suggestion.fromString("\\nRightarrow"),
-        Suggestion.fromString("\\nshortmid"),
-        Suggestion.fromString("\\nshortparallel"),
-        Suggestion.fromString("\\nsim"),
-        Suggestion.fromString("\\nsubseteq"),
-        Suggestion.fromString("\\nsubseteqq"),
-        Suggestion.fromString("\\nsucc"),
-        Suggestion.fromString("\\nsucceq"),
-        Suggestion.fromString("\\nsupseteq"),
-        Suggestion.fromString("\\nsupseteqq"),
-        Suggestion.fromString("\\ntriangleleft"),
-        Suggestion.fromString("\\ntrianglelefteq"),
-        Suggestion.fromString("\\ntriangleright"),
-        Suggestion.fromString("\\ntrianglerighteq"),
-        Suggestion.fromString("\\nu"),
-        Suggestion.fromString("\\nuparrow"),
-        Suggestion.fromString("\\nvdash"),
-        Suggestion.fromString("\\nvDash"),
-        Suggestion.fromString("\\nVdash"),
-        Suggestion.fromString("\\nVDash"),
-        Suggestion.fromString("\\nwarrow"),
-        Suggestion.fromString("\\odot"),
-        Suggestion.fromString("\\ohm"),
-        Suggestion.fromString("\\oint"),
-        Suggestion.fromString("\\oldstyle"),
-        Suggestion.fromString("\\omega"),
-        Suggestion.fromString("\\Omega"),
-        Suggestion.fromString("\\omicron"),
-        Suggestion.fromString("\\ominus"),
-        Suggestion.fromString("\\operatorname{#}"),
-        Suggestion.fromString("\\oplus"),
-        Suggestion.fromString("\\ordinarycolon"),
-        Suggestion.fromString("\\oslash"),
-        Suggestion.fromString("\\otimes"),
-        Suggestion.fromString("\\over"),
-        Suggestion.fromString("\\overbrace{#}"),
-        Suggestion.fromString("\\overbracket{#}"),
-        Suggestion.fromString("\\overleftarrow{#}"),
-        Suggestion.fromString("\\overleftrightarrow{#}"),
-        Suggestion.fromString("\\overline{#}"),
-        Suggestion.fromString("\\overparen{#}"),
-        Suggestion.fromString("\\overrightarrow{#}"),
-        Suggestion.fromString("\\overset{#}{#}"),
-        Suggestion.fromString("\\overunderset{#}{#}{#}"),
-        Suggestion.fromString("\\owns"),
-        Suggestion.fromString("\\parallel"),
-        Suggestion.fromString("\\partial"),
-        Suggestion.fromString("\\perp"),
-        Suggestion.fromString("\\perthousand"),
-        Suggestion.fromString("\\phantom{#}"),
-        Suggestion.fromString("\\phi"),
-        Suggestion.fromString("\\Phi"),
-        Suggestion.fromString("\\pi"),
-        Suggestion.fromString("\\Pi"),
-        Suggestion.fromString("\\pitchfork"),
-        Suggestion.fromString("\\pm"),
-        Suggestion.fromString("\\pmb{#}"),
-        Suggestion.fromString("\\pmod{#}"),
-        Suggestion.fromString("\\pod{#}"),
-        Suggestion.fromString("\\Pr"),
-        Suggestion.fromString("\\prec"),
-        Suggestion.fromString("\\precapprox"),
-        Suggestion.fromString("\\preccurlyeq"),
-        Suggestion.fromString("\\preceq"),
-        Suggestion.fromString("\\precnapprox"),
-        Suggestion.fromString("\\precneqq"),
-        Suggestion.fromString("\\precnsim"),
-        Suggestion.fromString("\\precsim"),
-        Suggestion.fromString("\\prescript{#}{#}{#}"),
-        Suggestion.fromString("\\prime"),
-        Suggestion.fromString("\\prod"),
-        Suggestion.fromString("\\prod^{#}_{#}"),
-        Suggestion.fromString("\\projlim"),
-        Suggestion.fromString("\\propto"),
-        Suggestion.fromString("\\psi"),
-        Suggestion.fromString("\\Psi"),
-        Suggestion.fromString("\\qquad"),
-        Suggestion.fromString("\\quad"),
-        Suggestion.fromString("\\rangle"),
-        Suggestion.fromString("\\rbrace"),
-        Suggestion.fromString("\\rbrack"),
-        Suggestion.fromString("\\rceil"),
-        Suggestion.fromString("\\Re"),
-        Suggestion.fromString("\\ref{#}"),
-        Suggestion.fromString("\\refeq{#}"),
-        Suggestion.fromString("\\renewcommand{#}{#}"),
-        Suggestion.fromString("\\renewenvironment{#}{#}{#}"),
-        Suggestion.fromString("\\renewtagform{#}{#}{#}"),
-        Suggestion.fromString("\\restriction"),
-        Suggestion.fromString("\\rfloor"),
-        Suggestion.fromString("\\rgroup"),
-        Suggestion.fromString("\\rhd"),
-        Suggestion.fromString("\\rho"),
-        Suggestion.fromString("\\Rightarrow"),
-        Suggestion.fromString("\\rightarrow"),
-        Suggestion.fromString("\\rightarrowtail"),
-        Suggestion.fromString("\\rightharpoondown"),
-        Suggestion.fromString("\\rightharpoonup"),
-        Suggestion.fromString("\\rightleftarrows"),
-        Suggestion.fromString("\\rightleftharpoons"),
-        Suggestion.fromString("\\rightrightarrows"),
-        Suggestion.fromString("\\rightsquigarrow"),
-        Suggestion.fromString("\\rightthreetimes"),
-        Suggestion.fromString("\\risingdotseq"),
-        Suggestion.fromString("\\rlap{#}"),
-        Suggestion.fromString("\\rm"),
-        Suggestion.fromString("\\rmoustache"),
-        Suggestion.fromString("\\rparen"),
-        Suggestion.fromString("\\Rrightarrow"),
-        Suggestion.fromString("\\Rsh"),
-        Suggestion.fromString("\\rtimes"),
-        Suggestion.fromString("\\rvert"),
-        Suggestion.fromString("\\rVert"),
-        Suggestion.fromString("\\S"),
-        Suggestion.fromString("\\scr"),
-        Suggestion.fromString("\\scriptscriptstyle"),
-        Suggestion.fromString("\\scriptsize"),
-        Suggestion.fromString("\\scriptstyle"),
-        Suggestion.fromString("\\searrow"),
-        Suggestion.fromString("\\sec"),
-        Suggestion.fromString("\\set{#}"),
-        Suggestion.fromString("\\Set{#}"),
-        Suggestion.fromString("\\setminus"),
-        Suggestion.fromString("\\sf"),
-        Suggestion.fromString("\\sharp"),
-        Suggestion.fromString("\\shortmid"),
-        Suggestion.fromString("\\shortparallel"),
-        Suggestion.fromString("\\sideset{#}{#}{#}"),
-        Suggestion.fromString("\\sigma"),
-        Suggestion.fromString("\\Sigma"),
-        Suggestion.fromString("\\sim"),
-        Suggestion.fromString("\\simeq"),
-        Suggestion.fromString("\\sin"),
-        Suggestion.fromString("\\sinh"),
-        Suggestion.fromString("\\skew{#}{#}{#}"),
-        Suggestion.fromString("\\SkipLimits"),
-        Suggestion.fromString("\\small"),
-        Suggestion.fromString("\\smallfrown"),
-        Suggestion.fromString("\\smallint"),
-        Suggestion.fromString("\\smallsetminus"),
-        Suggestion.fromString("\\smallsmile"),
-        Suggestion.fromString("\\smash{#}"),
-        Suggestion.fromString("\\smile"),
-        Suggestion.fromString("\\space"),
-        Suggestion.fromString("\\spadesuit"),
-        Suggestion.fromString("\\sphericalangle"),
-        Suggestion.fromString("\\splitdfrac{#}{#}"),
-        Suggestion.fromString("\\splitfrac{#}{#}"),
-        Suggestion.fromString("\\sqcap"),
-        Suggestion.fromString("\\sqcup"),
-        Suggestion.fromString("\\sqrt{#}"),
-        Suggestion.fromString("\\sqsubset"),
-        Suggestion.fromString("\\sqsubseteq"),
-        Suggestion.fromString("\\sqsupset"),
-        Suggestion.fromString("\\sqsupseteq"),
-        Suggestion.fromString("\\square"),
-        Suggestion.fromString("\\stackbin{#}{#}"),
-        Suggestion.fromString("\\stackrel{#}{#}"),
-        Suggestion.fromString("\\star"),
-        Suggestion.fromString("\\strut"),
-        Suggestion.fromString("\\style{#}{#}"),
-        Suggestion.fromString("\\subset"),
-        Suggestion.fromString("\\Subset"),
-        Suggestion.fromString("\\subseteq"),
-        Suggestion.fromString("\\subseteqq"),
-        Suggestion.fromString("\\subsetneq"),
-        Suggestion.fromString("\\subsetneqq"),
-        Suggestion.fromString("\\substack{#}"),
-        Suggestion.fromString("\\succ"),
-        Suggestion.fromString("\\succapprox"),
-        Suggestion.fromString("\\succcurlyeq"),
-        Suggestion.fromString("\\succeq"),
-        Suggestion.fromString("\\succnapprox"),
-        Suggestion.fromString("\\succneqq"),
-        Suggestion.fromString("\\succnsim"),
-        Suggestion.fromString("\\succsim"),
-        Suggestion.fromString("\\sum"),
-        Suggestion.fromString("\\sum^{#}_{#}"),
-        Suggestion.fromString("\\sup"),
-        Suggestion.fromString("\\supset"),
-        Suggestion.fromString("\\Supset"),
-        Suggestion.fromString("\\supseteq"),
-        Suggestion.fromString("\\supseteqq"),
-        Suggestion.fromString("\\supsetneq"),
-        Suggestion.fromString("\\supsetneqq"),
-        Suggestion.fromString("\\surd"),
-        Suggestion.fromString("\\swarrow"),
-        Suggestion.fromString("\\symbb{#}"),
-        Suggestion.fromString("\\symbf{#}"),
-        Suggestion.fromString("\\symbfcal{#}"),
-        Suggestion.fromString("\\symbffrak{#}"),
-        Suggestion.fromString("\\symbfit{#}"),
-        Suggestion.fromString("\\symbfscr{#}"),
-        Suggestion.fromString("\\symbfsf{#}"),
-        Suggestion.fromString("\\symbfsfit{#}"),
-        Suggestion.fromString("\\symbfsfup{#}"),
-        Suggestion.fromString("\\symbfup{#}"),
-        Suggestion.fromString("\\symcal{#}"),
-        Suggestion.fromString("\\symfrak{#}"),
-        Suggestion.fromString("\\symit{#}"),
-        Suggestion.fromString("\\symnormal{#}"),
-        Suggestion.fromString("\\symrm{#}"),
-        Suggestion.fromString("\\symscr{#}"),
-        Suggestion.fromString("\\symsf{#}"),
-        Suggestion.fromString("\\symsfit{#}"),
-        Suggestion.fromString("\\symsfup{#}"),
-        Suggestion.fromString("\\symtt{#}"),
-        Suggestion.fromString("\\symup{#}"),
-        Suggestion.fromString("\\tag{#}"),
-        Suggestion.fromString("\\tan"),
-        Suggestion.fromString("\\tanh"),
-        Suggestion.fromString("\\tau"),
-        Suggestion.fromString("\\tbinom{#}{#}"),
-        Suggestion.fromString("\\TeX"),
-        Suggestion.fromString("\\text{#}"),
-        Suggestion.fromString("\\textacutedbl"),
-        Suggestion.fromString("\\textasciiacute"),
-        Suggestion.fromString("\\textasciibreve"),
-        Suggestion.fromString("\\textasciicaron"),
-        Suggestion.fromString("\\textasciicircum"),
-        Suggestion.fromString("\\textasciidieresis"),
-        Suggestion.fromString("\\textasciimacron"),
-        Suggestion.fromString("\\textasciitilde"),
-        Suggestion.fromString("\\textasteriskcentered"),
-        Suggestion.fromString("\\textbackslash"),
-        Suggestion.fromString("\\textbaht"),
-        Suggestion.fromString("\\textbar"),
-        Suggestion.fromString("\\textbardbl"),
-        Suggestion.fromString("\\textbf{#}"),
-        Suggestion.fromString("\\textbigcircle"),
-        Suggestion.fromString("\\textblank"),
-        Suggestion.fromString("\\textborn"),
-        Suggestion.fromString("\\textbraceleft"),
-        Suggestion.fromString("\\textbraceright"),
-        Suggestion.fromString("\\textbrokenbar"),
-        Suggestion.fromString("\\textbullet"),
-        Suggestion.fromString("\\textcelsius"),
-        Suggestion.fromString("\\textcent"),
-        Suggestion.fromString("\\textcentoldstyle"),
-        Suggestion.fromString("\\textcircledP"),
-        Suggestion.fromString("\\textclap{#}"),
-        Suggestion.fromString("\\textcolonmonetary"),
-        Suggestion.fromString("\\textcolor{#}{#}"),
-        Suggestion.fromString("\\textcompwordmark"),
-        Suggestion.fromString("\\textcopyleft"),
-        Suggestion.fromString("\\textcopyright"),
-        Suggestion.fromString("\\textcurrency"),
-        Suggestion.fromString("\\textdagger"),
-        Suggestion.fromString("\\textdaggerdbl"),
-        Suggestion.fromString("\\textdegree"),
-        Suggestion.fromString("\\textdied"),
-        Suggestion.fromString("\\textdiscount"),
-        Suggestion.fromString("\\textdiv"),
-        Suggestion.fromString("\\textdivorced"),
-        Suggestion.fromString("\\textdollar"),
-        Suggestion.fromString("\\textdollaroldstyle"),
-        Suggestion.fromString("\\textdong"),
-        Suggestion.fromString("\\textdownarrow"),
-        Suggestion.fromString("\\texteightoldstyle"),
-        Suggestion.fromString("\\textellipsis"),
-        Suggestion.fromString("\\textemdash"),
-        Suggestion.fromString("\\textendash"),
-        Suggestion.fromString("\\textestimated"),
-        Suggestion.fromString("\\texteuro"),
-        Suggestion.fromString("\\textexclamdown"),
-        Suggestion.fromString("\\textfiveoldstyle"),
-        Suggestion.fromString("\\textflorin"),
-        Suggestion.fromString("\\textfouroldstyle"),
-        Suggestion.fromString("\\textfractionsolidus"),
-        Suggestion.fromString("\\textgravedbl"),
-        Suggestion.fromString("\\textgreater"),
-        Suggestion.fromString("\\textguarani"),
-        Suggestion.fromString("\\textinterrobang"),
-        Suggestion.fromString("\\textinterrobangdown"),
-        Suggestion.fromString("\\textit{#}"),
-        Suggestion.fromString("\\textlangle"),
-        Suggestion.fromString("\\textlbrackdbl"),
-        Suggestion.fromString("\\textleftarrow"),
-        Suggestion.fromString("\\textless"),
-        Suggestion.fromString("\\textlira"),
-        Suggestion.fromString("\\textllap{#}"),
-        Suggestion.fromString("\\textlnot"),
-        Suggestion.fromString("\\textlquill"),
-        Suggestion.fromString("\\textmarried"),
-        Suggestion.fromString("\\textmho"),
-        Suggestion.fromString("\\textminus"),
-        Suggestion.fromString("\\textmu"),
-        Suggestion.fromString("\\textmusicalnote"),
-        Suggestion.fromString("\\textnaira"),
-        Suggestion.fromString("\\textnineoldstyle"),
-        Suggestion.fromString("\\textnormal{#}"),
-        Suggestion.fromString("\\textnumero"),
-        Suggestion.fromString("\\textohm"),
-        Suggestion.fromString("\\textonehalf"),
-        Suggestion.fromString("\\textoneoldstyle"),
-        Suggestion.fromString("\\textonequarter"),
-        Suggestion.fromString("\\textonesuperior"),
-        Suggestion.fromString("\\textopenbullet"),
-        Suggestion.fromString("\\textordfeminine"),
-        Suggestion.fromString("\\textordmasculine"),
-        Suggestion.fromString("\\textparagraph"),
-        Suggestion.fromString("\\textperiodcentered"),
-        Suggestion.fromString("\\textpertenthousand"),
-        Suggestion.fromString("\\textperthousand"),
-        Suggestion.fromString("\\textpeso"),
-        Suggestion.fromString("\\textpm"),
-        Suggestion.fromString("\\textquestiondown"),
-        Suggestion.fromString("\\textquotedblleft"),
-        Suggestion.fromString("\\textquotedblright"),
-        Suggestion.fromString("\\textquoteleft"),
-        Suggestion.fromString("\\textquoteright"),
-        Suggestion.fromString("\\textrangle"),
-        Suggestion.fromString("\\textrbrackdbl"),
-        Suggestion.fromString("\\textrecipe"),
-        Suggestion.fromString("\\textreferencemark"),
-        Suggestion.fromString("\\textregistered"),
-        Suggestion.fromString("\\textrightarrow"),
-        Suggestion.fromString("\\textrlap{#}"),
-        Suggestion.fromString("\\textrm{#}"),
-        Suggestion.fromString("\\textrquill"),
-        Suggestion.fromString("\\textsection"),
-        Suggestion.fromString("\\textservicemark"),
-        Suggestion.fromString("\\textsevenoldstyle"),
-        Suggestion.fromString("\\textsf{#}"),
-        Suggestion.fromString("\\textsixoldstyle"),
-        Suggestion.fromString("\\textsterling"),
-        Suggestion.fromString("\\textstyle"),
-        Suggestion.fromString("\\textsurd"),
-        Suggestion.fromString("\\textthreeoldstyle"),
-        Suggestion.fromString("\\textthreequarters"),
-        Suggestion.fromString("\\textthreesuperior"),
-        Suggestion.fromString("\\texttildelow"),
-        Suggestion.fromString("\\texttimes"),
-        Suggestion.fromString("\\texttip{#}{#}"),
-        Suggestion.fromString("\\texttrademark"),
-        Suggestion.fromString("\\texttt{#}"),
-        Suggestion.fromString("\\texttwooldstyle"),
-        Suggestion.fromString("\\texttwosuperior"),
-        Suggestion.fromString("\\textunderscore"),
-        Suggestion.fromString("\\textup{#}"),
-        Suggestion.fromString("\\textuparrow"),
-        Suggestion.fromString("\\textvisiblespace"),
-        Suggestion.fromString("\\textwon"),
-        Suggestion.fromString("\\textyen"),
-        Suggestion.fromString("\\textzerooldstyle"),
-        Suggestion.fromString("\\tfrac{#}{#}"),
-        Suggestion.fromString("\\therefore"),
-        Suggestion.fromString("\\theta"),
-        Suggestion.fromString("\\Theta"),
-        Suggestion.fromString("\\thickapprox"),
-        Suggestion.fromString("\\thicksim"),
-        Suggestion.fromString("\\thinspace"),
-        Suggestion.fromString("\\tilde{#}"),
-        Suggestion.fromString("\\times"),
-        Suggestion.fromString("\\tiny"),
-        Suggestion.fromString("\\Tiny"),
-        Suggestion.fromString("\\to"),
-        Suggestion.fromString("\\top"),
-        Suggestion.fromString("\\triangle"),
-        Suggestion.fromString("\\triangledown"),
-        Suggestion.fromString("\\triangleleft"),
-        Suggestion.fromString("\\trianglelefteq"),
-        Suggestion.fromString("\\triangleq"),
-        Suggestion.fromString("\\triangleright"),
-        Suggestion.fromString("\\trianglerighteq"),
-        Suggestion.fromString("\\tripledash"),
-        Suggestion.fromString("\\tt"),
-        Suggestion.fromString("\\twoheadleftarrow"),
-        Suggestion.fromString("\\twoheadrightarrow"),
-        Suggestion.fromString("\\ulcorner"),
-        Suggestion.fromString("\\underbrace{#}"),
-        Suggestion.fromString("\\underbracket{#}"),
-        Suggestion.fromString("\\underleftarrow{#}"),
-        Suggestion.fromString("\\underleftrightarrow{#}"),
-        Suggestion.fromString("\\underline{#}"),
-        Suggestion.fromString("\\underparen{#}"),
-        Suggestion.fromString("\\underrightarrow{#}"),
-        Suggestion.fromString("\\underset{#}{#}"),
-        Suggestion.fromString("\\unicode{#}"),
-        Suggestion.fromString("\\unlhd"),
-        Suggestion.fromString("\\unrhd"),
-        Suggestion.fromString("\\upalpha"),
-        Suggestion.fromString("\\uparrow"),
-        Suggestion.fromString("\\Uparrow"),
-        Suggestion.fromString("\\upbeta"),
-        Suggestion.fromString("\\upchi"),
-        Suggestion.fromString("\\updelta"),
-        Suggestion.fromString("\\Updelta"),
-        Suggestion.fromString("\\updownarrow"),
-        Suggestion.fromString("\\Updownarrow"),
-        Suggestion.fromString("\\upepsilon"),
-        Suggestion.fromString("\\upeta"),
-        Suggestion.fromString("\\upgamma"),
-        Suggestion.fromString("\\Upgamma"),
-        Suggestion.fromString("\\upharpoonleft"),
-        Suggestion.fromString("\\upharpoonright"),
-        Suggestion.fromString("\\upiota"),
-        Suggestion.fromString("\\upkappa"),
-        Suggestion.fromString("\\uplambda"),
-        Suggestion.fromString("\\Uplambda"),
-        Suggestion.fromString("\\uplus"),
-        Suggestion.fromString("\\upmu"),
-        Suggestion.fromString("\\upnu"),
-        Suggestion.fromString("\\upomega"),
-        Suggestion.fromString("\\Upomega"),
-        Suggestion.fromString("\\upomicron"),
-        Suggestion.fromString("\\upphi"),
-        Suggestion.fromString("\\Upphi"),
-        Suggestion.fromString("\\uppi"),
-        Suggestion.fromString("\\Uppi"),
-        Suggestion.fromString("\\uppsi"),
-        Suggestion.fromString("\\Uppsi"),
-        Suggestion.fromString("\\uprho"),
-        Suggestion.fromString("\\upsigma"),
-        Suggestion.fromString("\\Upsigma"),
-        Suggestion.fromString("\\upsilon"),
-        Suggestion.fromString("\\Upsilon"),
-        Suggestion.fromString("\\uptau"),
-        Suggestion.fromString("\\uptheta"),
-        Suggestion.fromString("\\Uptheta"),
-        Suggestion.fromString("\\upuparrows"),
-        Suggestion.fromString("\\upupsilon"),
-        Suggestion.fromString("\\Upupsilon"),
-        Suggestion.fromString("\\upvarepsilon"),
-        Suggestion.fromString("\\upvarphi"),
-        Suggestion.fromString("\\upvarpi"),
-        Suggestion.fromString("\\upvarrho"),
-        Suggestion.fromString("\\upvarsigma"),
-        Suggestion.fromString("\\upvartheta"),
-        Suggestion.fromString("\\upxi"),
-        Suggestion.fromString("\\Upxi"),
-        Suggestion.fromString("\\upzeta"),
-        Suggestion.fromString("\\urcorner"),
-        Suggestion.fromString("\\usetagform{#}"),
-        Suggestion.fromString("\\varDelta"),
-        Suggestion.fromString("\\varepsilon"),
-        Suggestion.fromString("\\varGamma"),
-        Suggestion.fromString("\\varinjlim"),
-        Suggestion.fromString("\\varkappa"),
-        Suggestion.fromString("\\varLambda"),
-        Suggestion.fromString("\\varliminf"),
-        Suggestion.fromString("\\varlimsup"),
-        Suggestion.fromString("\\varnothing"),
-        Suggestion.fromString("\\varOmega"),
-        Suggestion.fromString("\\varphi"),
-        Suggestion.fromString("\\varPhi"),
-        Suggestion.fromString("\\varpi"),
-        Suggestion.fromString("\\varPi"),
-        Suggestion.fromString("\\varprojlim"),
-        Suggestion.fromString("\\varpropto"),
-        Suggestion.fromString("\\varPsi"),
-        Suggestion.fromString("\\varrho"),
-        Suggestion.fromString("\\varsigma"),
-        Suggestion.fromString("\\varSigma"),
-        Suggestion.fromString("\\varsubsetneq"),
-        Suggestion.fromString("\\varsubsetneqq"),
-        Suggestion.fromString("\\varsupsetneq"),
-        Suggestion.fromString("\\varsupsetneqq"),
-        Suggestion.fromString("\\vartheta"),
-        Suggestion.fromString("\\varTheta"),
-        Suggestion.fromString("\\vartriangle"),
-        Suggestion.fromString("\\vartriangleleft"),
-        Suggestion.fromString("\\vartriangleright"),
-        Suggestion.fromString("\\varUpsilon"),
-        Suggestion.fromString("\\varXi"),
-        Suggestion.fromString("\\vcenter{#}"),
-        Suggestion.fromString("\\vdash"),
-        Suggestion.fromString("\\vDash"),
-        Suggestion.fromString("\\Vdash"),
-        Suggestion.fromString("\\vdots"),
-        Suggestion.fromString("\\vec{#}"),
-        Suggestion.fromString("\\vee"),
-        Suggestion.fromString("\\veebar"),
-        Suggestion.fromString("\\Vert"),
-        Suggestion.fromString("\\vert"),
-        Suggestion.fromString("\\vphantom{#}"),
-        Suggestion.fromString("\\Vvdash"),
-        Suggestion.fromString("\\wedge"),
-        Suggestion.fromString("\\widehat{#}"),
-        Suggestion.fromString("\\widetilde{#}"),
-        Suggestion.fromString("\\wp"),
-        Suggestion.fromString("\\wr"),
-        Suggestion.fromString("\\xcancel{#}"),
-        Suggestion.fromString("\\xhookleftarrow{#}"),
-        Suggestion.fromString("\\xhookrightarrow{#}"),
-        Suggestion.fromString("\\xi"),
-        Suggestion.fromString("\\Xi"),
-        Suggestion.fromString("\\xleftarrow{#}"),
-        Suggestion.fromString("\\xLeftarrow{#}"),
-        Suggestion.fromString("\\xleftharpoondown{#}"),
-        Suggestion.fromString("\\xleftharpoonup{#}"),
-        Suggestion.fromString("\\xleftrightarrow{#}"),
-        Suggestion.fromString("\\xLeftrightarrow{#}"),
-        Suggestion.fromString("\\xleftrightharpoons{#}"),
-        Suggestion.fromString("\\xLeftrightharpoons{#}"),
-        Suggestion.fromString("\\xlongequal{#}"),
-        Suggestion.fromString("\\xmapsto{#}"),
-        Suggestion.fromString("\\xmathstrut{#}"),
-        Suggestion.fromString("\\xrightarrow{#}"),
-        Suggestion.fromString("\\xRightarrow{#}"),
-        Suggestion.fromString("\\xrightharpoondown{#}"),
-        Suggestion.fromString("\\xrightharpoonup{#}"),
-        Suggestion.fromString("\\xrightleftharpoons{#}"),
-        Suggestion.fromString("\\xRightleftharpoons{#}"),
-        Suggestion.fromString("\\xtofrom{#}"),
-        Suggestion.fromString("\\xtwoheadleftarrow{#}"),
-        Suggestion.fromString("\\xtwoheadrightarrow{#}"),
-        Suggestion.fromString("\\yen"),
-        Suggestion.fromString("\\zeta"),
-    ];
+export function migrateV3LatexCommands(commands: LatexCommand[]): {
+    custom: LatexCommand[];
+    removedDefaults: string[];
+} {
+    const builtIn = getBuiltInLatexCommands();
+    const key = (c: LatexCommand) => c.displayName + "\n" + c.replacement;
+    const defaults = new Set(builtIn.map(key));
+    for (const old of CHANGED_V3_DEFAULTS.keys()) defaults.add(key({ displayName: old, replacement: old }));
+
+    const present = new Set(commands.map((c) => c.displayName));
+    for (const [old, renamed] of CHANGED_V3_DEFAULTS) if (present.has(old)) present.add(renamed);
+
+    return {
+        custom: commands.filter((c) => !defaults.has(key(c))),
+        removedDefaults: builtIn.map((c) => c.displayName).filter((name) => !present.has(name)),
+    };
+}
+
+export class LatexProvider implements SuggestionProvider {
+    readonly id = "latex";
+    readonly icon = "sigma";
+
+    private customCommands: LatexCommand[] = [];
+    private builtInIndex: IndexedCommand[] = [];
+    private customIndex: IndexedCommand[] = [];
+
+    constructor(
+        private readonly files: DataFiles,
+        private readonly blacklist: SuggestionBlacklist,
+    ) {}
+
+    getSuggestions(context: SuggestionContext, settings: CompletrSettings): Suggestion[] {
+        if (!settings.latexProviderEnabled) return [];
+        if (!context.manual && (!context.query || context.query.length < settings.latexMinWordTriggerLength)) return [];
+
+        const pos = context.editor.posToOffset(context.end);
+        const mathType = getLatexContext(context.state, pos, settings.latexTriggerInCodeBlocks);
+        if (!mathType) return [];
+
+        const ignoreCase = settings.latexIgnoreCase;
+        const query = ignoreCase ? context.query.toLowerCase() : context.query;
+        const stripBackslash = context.separatorChar === "\\";
+
+        const matches: { cmd: IndexedCommand; index: number }[] = [];
+        const collect = (commands: IndexedCommand[]) => {
+            for (const cmd of commands) {
+                const index = (ignoreCase ? cmd.lowerCaseName : cmd.suggestion.displayName).indexOf(query);
+                if (index !== -1) matches.push({ cmd, index });
+            }
+        };
+        collect(this.customIndex);
+        if (settings.latexBuiltInCommands) collect(this.builtInIndex);
+
+        // Matches closer to the start rank higher, then shorter names ("\vee" before "\curlyvee" for "vee").
+        matches.sort((a, b) => a.index - b.index || a.cmd.nameLength - b.cmd.nameLength);
+
+        return matches.map(({ cmd }) => {
+            let replacement = cmd.suggestion.replacement;
+            if (stripBackslash && replacement.startsWith("\\")) replacement = replacement.substring(1);
+            if (mathType === "inline") replacement = replacement.replace(/\n/g, "");
+            return { ...cmd.suggestion, replacement };
+        });
+    }
+
+    getCustomCommands(): readonly LatexCommand[] {
+        return this.customCommands;
+    }
+
+    async setCustomCommands(commands: LatexCommand[]) {
+        this.customCommands = commands;
+        await this.files.write(CUSTOM_LATEX_COMMANDS_FILE, serializeLatexCommands(commands));
+        this.rebuildIndex();
+    }
+
+    /**
+     * Loads the user's commands. Returns an error message if the file is invalid.
+     * @param migrateFromV3 the file is from an older version and contains all default commands.
+     */
+    async load(migrateFromV3: boolean): Promise<string | null> {
+        let error: string | null = null;
+        const contents = await this.files.read(CUSTOM_LATEX_COMMANDS_FILE);
+        if (contents === null) {
+            this.customCommands = [];
+            await this.files.write(CUSTOM_LATEX_COMMANDS_FILE, "[]");
+        } else {
+            try {
+                this.customCommands = parseLatexCommands(contents);
+            } catch (e) {
+                this.customCommands = [];
+                error = `Failed to load ${CUSTOM_LATEX_COMMANDS_FILE}: ${(e as Error).message}`;
+            }
+
+            if (migrateFromV3 && !error) {
+                const { custom, removedDefaults } = migrateV3LatexCommands(this.customCommands);
+                await this.files.write(CUSTOM_LATEX_COMMANDS_FILE + ".v3.bak", contents);
+                await this.blacklist.addAll(removedDefaults);
+                await this.setCustomCommands(custom);
+            }
+        }
+
+        this.rebuildIndex();
+        return error;
+    }
+
+    rebuildIndex() {
+        const index = (commands: LatexCommand[]) =>
+            commands
+                .filter((c) => !this.blacklist.has(c.displayName))
+                .map((c): IndexedCommand => ({
+                    suggestion: suggestion(c.displayName, c.replacement, { isSnippet: true }),
+                    lowerCaseName: c.displayName.toLowerCase(),
+                    nameLength: c.displayName.split("{", 1)[0].length,
+                }));
+        this.builtInIndex = index(getBuiltInLatexCommands());
+        this.customIndex = index(this.customCommands);
+    }
 }

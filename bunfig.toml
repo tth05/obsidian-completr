@@ -1,0 +1,19 @@
+[test]
+# `bun test` runs the fast unit tests only. UI tests: `bun run test:e2e` (needs a local Obsidian install).
+root = "./test/unit"
+preload = ["./test/unit/preload.ts"]
+
+[fmt]
+printWidth = 120
+tabWidth = 4
+
+[lint]
+typeAware = true
+
+[lint.rules]
+"eqeqeq" = ["error", "smart"]
+"no-var" = "error"
+"prefer-const" = "error"
+"@typescript-eslint/no-floating-promises" = "error"
+# Obsidian's UI APIs take void callbacks, async ones are the normal pattern there.
+"@typescript-eslint/no-misused-promises" = ["error", { checksVoidReturn = { arguments = false } }]
