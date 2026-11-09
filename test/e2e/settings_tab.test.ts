@@ -9,13 +9,19 @@ import {
     chooseFiles,
     clickButton,
     clickExtraButton,
+    clickListModalButton,
     clickModalButton,
     clickToggle,
     closeSettings,
+    closeTopModal,
+    fillEntryModal,
+    filterListModal,
     getTextInput,
     groupHeadings,
     isSettingsTabOpen,
     isToggleOn,
+    listModalMessage,
+    listModalNames,
     openCompletrSettings,
     readDataJson,
     selectDropdown,
@@ -217,33 +223,39 @@ describe("blacklist", () => {
             for (const w of words) await plugin.blacklistSuggestion(w);
         }, WORDS);
         await openCompletrSettings(obsidian);
-        expect(await settingNames(obsidian, "Blacklist")).toEqual(WORDS);
+        // The settings only show the count, the list is in a modal
+        expect(await settingNames(obsidian, "Blacklist")).toEqual(["2 blacklisted suggestions"]);
+        await clickButton(obsidian, "Blacklist", "2 blacklisted suggestions", "Manage");
+        expect(await listModalNames(obsidian)).toEqual(WORDS);
+        expect(await listModalMessage(obsidian)).toBeNull();
 
-        // Filter
-        const visible = await obsidian.eval(() => {
-            const input = window.__e2eFindSetting!("Blacklist", null).querySelector<HTMLInputElement>(
-                "input[type=search]",
-            )!;
-            input.value = "BETA";
-            input.dispatchEvent(new Event("input", { bubbles: true }));
-            return Array.from(document.querySelectorAll<HTMLElement>(".completr-blacklist-item"))
-                .filter((el) => el.isShown())
-                .map((el) => el.dataset.entry);
+        await filterListModal(obsidian, "BETA");
+        expect(await listModalNames(obsidian)).toEqual(["blackwordbeta"]);
+        expect(await listModalMessage(obsidian)).toBe("1 of 2 entries");
+        await filterListModal(obsidian, "nothing like this");
+        expect(await listModalNames(obsidian)).toEqual([]);
+        expect(await listModalMessage(obsidian)).toBe("Nothing matches the filter.");
+        await filterListModal(obsidian, "");
+
+        await clickListModalButton(obsidian, "blackwordalpha", "Remove from blacklist");
+        await obsidian.waitFor(async () => JSON.stringify(await listModalNames(obsidian)) === '["blackwordbeta"]', {
+            what: "the entry to disappear",
         });
-        expect(visible).toEqual(["blackwordbeta"]);
-
-        await clickExtraButton(obsidian, "Blacklist", "blackwordalpha", "Remove from blacklist");
-        await obsidian.waitFor(
-            async () => JSON.stringify(await settingNames(obsidian, "Blacklist")) === '["blackwordbeta"]',
-            { what: "the entry to disappear" },
-        );
         expect(await blacklistFile()).toBe("blackwordbeta");
 
-        await clickExtraButton(obsidian, "Blacklist", "blackwordbeta", "Remove from blacklist");
-        await obsidian.waitFor(async () => (await settingNames(obsidian, "Blacklist")).length === 0, {
+        await clickListModalButton(obsidian, "blackwordbeta", "Remove from blacklist");
+        await obsidian.waitFor(async () => (await listModalNames(obsidian))?.length === 0, {
             what: "the list to be empty",
         });
+        expect(await listModalMessage(obsidian)).toBe("No suggestions are blacklisted.");
         expect(await blacklistFile()).toBe("");
+
+        // Closing the modal updates the count
+        await closeTopModal(obsidian);
+        await obsidian.waitFor(
+            async () => JSON.stringify(await settingNames(obsidian, "Blacklist")) === '["0 blacklisted suggestions"]',
+            { what: "the count to update" },
+        );
     });
 
     test("a word list word removed from the blacklist is suggested again", async () => {
@@ -251,10 +263,12 @@ describe("blacklist", () => {
             await app.plugins.plugins["obsidian-completr"]!.blacklistSuggestion("blackwordalpha");
         });
         await openCompletrSettings(obsidian);
-        await clickExtraButton(obsidian, "Blacklist", "blackwordalpha", "Remove from blacklist");
-        await obsidian.waitFor(async () => (await settingNames(obsidian, "Blacklist")).length === 0, {
+        await clickButton(obsidian, "Blacklist", "1 blacklisted suggestion", "Manage");
+        await clickListModalButton(obsidian, "blackwordalpha", "Remove from blacklist");
+        await obsidian.waitFor(async () => (await listModalNames(obsidian))?.length === 0, {
             what: "the list to be empty",
         });
+        await closeTopModal(obsidian);
         await closeSettings(obsidian);
 
         await obsidian.openNote("<|>", { path: NOTE });
@@ -263,7 +277,7 @@ describe("blacklist", () => {
     });
 });
 
-test("custom LaTeX commands can be added and removed", async () => {
+test("custom LaTeX commands can be added, edited and removed", async () => {
     const original = await obsidian.eval(() =>
         app.plugins.plugins["obsidian-completr"]!.latex.getCustomCommands().map((c) => ({ ...c })),
     );
@@ -276,26 +290,27 @@ test("custom LaTeX commands can be added and removed", async () => {
         await clickModalButton(obsidian, "Add");
         expect(await topModalText(obsidian)).toContain("Add LaTeX command");
 
-        await obsidian.eval(() => {
-            const modal = Array.from(document.querySelectorAll(".modal:not(.mod-settings)")).at(-1)!;
-            const textarea = modal.querySelector<HTMLTextAreaElement>("textarea")!;
-            textarea.value = "\\eecmd{#}{#}";
-            textarea.dispatchEvent(new Event("input", { bubbles: true }));
-            const name = modal.querySelector<HTMLInputElement>("input[type=text]")!;
-            name.value = "\\eecmd";
-            name.dispatchEvent(new Event("input", { bubbles: true }));
-        });
+        await fillEntryModal(obsidian, "\\eecmd", "\\eecmd{#}");
         await clickModalButton(obsidian, "Add");
         await obsidian.waitFor(async () => (await topModalText(obsidian)) === null, { what: "the modal to close" });
-
         await obsidian.waitFor(
-            async () => (await settingNames(obsidian, "Custom LaTeX commands")).includes("\\eecmd"),
-            {
-                what: "the command in the list",
-            },
+            async () => (await settingNames(obsidian, "Custom LaTeX commands")).includes("1 command"),
+            { what: "the count to update" },
         );
+
+        // Edit it in the list
+        await clickButton(obsidian, "Custom LaTeX commands", "1 command", "Manage");
+        expect(await listModalNames(obsidian)).toEqual(["\\eecmd"]);
+        await clickListModalButton(obsidian, "\\eecmd", "Edit");
+        expect(await topModalText(obsidian)).toContain("Edit LaTeX command");
+        await fillEntryModal(obsidian, null, "\\eecmd{#}{#}");
+        await clickModalButton(obsidian, "Save");
+        await obsidian.waitFor(async () => (await topModalText(obsidian))?.includes("\\eecmd{#}{#}"), {
+            what: "the list to show the new replacement",
+        });
         const file = await Bun.file(join(obsidian.pluginDir, "latex_commands.json")).text();
-        expect(JSON.parse(file)).toContainEqual({ displayName: "\\eecmd", replacement: "\\eecmd{#}{#}" });
+        expect(JSON.parse(file)).toEqual([{ displayName: "\\eecmd", replacement: "\\eecmd{#}{#}" }]);
+        await closeTopModal(obsidian);
         await closeSettings(obsidian);
 
         await obsidian.openNote("<|>", { path: NOTE });
@@ -305,11 +320,12 @@ test("custom LaTeX commands can be added and removed", async () => {
         expect((await obsidian.editor()).text).toContain("$\\eecmd{}{}");
 
         await openCompletrSettings(obsidian);
-        await clickExtraButton(obsidian, "Custom LaTeX commands", "\\eecmd", "Remove");
-        await obsidian.waitFor(
-            async () => !(await settingNames(obsidian, "Custom LaTeX commands")).includes("\\eecmd"),
-            { what: "the command to be removed" },
-        );
+        await clickButton(obsidian, "Custom LaTeX commands", "1 command", "Manage");
+        await clickListModalButton(obsidian, "\\eecmd", "Remove");
+        await obsidian.waitFor(async () => (await listModalNames(obsidian))?.length === 0, {
+            what: "the command to be removed",
+        });
+        await closeTopModal(obsidian);
         const after = await Bun.file(join(obsidian.pluginDir, "latex_commands.json")).text();
         expect(after).not.toContain("eecmd");
     } finally {

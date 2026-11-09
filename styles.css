@@ -96,5 +96,53 @@ span.completr-placeholder span {
 
 .completr-replacement-input {
     width: 100%;
+    min-width: 20em;
     font-family: var(--font-monospace);
+}
+
+.completr-drop-hint {
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+}
+
+.completr-drop-target.is-dragging-over {
+    outline: 2px dashed var(--interactive-accent);
+    outline-offset: -2px;
+    border-radius: var(--radius-s);
+}
+
+.completr-list-toolbar {
+    border-top: none;
+    padding-top: 0;
+}
+
+.completr-list-toolbar .setting-item-control {
+    flex: 1;
+}
+
+.completr-list-toolbar .search-input-container {
+    flex: 1;
+}
+
+.completr-list {
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.completr-list-item .setting-item-name {
+    font-family: var(--font-monospace);
+    word-break: break-all;
+}
+
+/* Long multi-line replacements only show their start */
+.completr-list-item .setting-item-description {
+    font-family: var(--font-monospace);
+    white-space: pre;
+    max-height: 3lh;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.completr-list-message {
+    padding-top: var(--size-4-2);
 }

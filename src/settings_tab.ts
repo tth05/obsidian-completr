@@ -1,13 +1,4 @@
-import {
-    type App,
-    type ButtonComponent,
-    Modal,
-    Notice,
-    PluginSettingTab,
-    Setting,
-    SettingGroup,
-    type TextComponent,
-} from "obsidian";
+import { type App, Notice, PluginSettingTab, SettingGroup, type TextComponent } from "obsidian";
 import { isInstalled as isCalloutManagerInstalled } from "obsidian-callout-manager";
 import { decodeText } from "./data_files.ts";
 import type CompletrPlugin from "./main.ts";
@@ -15,6 +6,7 @@ import type { CustomEntry } from "./provider/custom_suggestions.ts";
 import { CUSTOM_LATEX_COMMANDS_FILE } from "./provider/latex_provider.ts";
 import { SNIPPETS_FILE } from "./provider/snippet_provider.ts";
 import { CalloutProviderSource, type CompletrSettings, IconMode, SortOrder, WordInsertionMode } from "./settings.ts";
+import { ConfirmationModal, CustomEntryModal, type CustomEntryModalOptions, ListModal } from "./settings_modals.ts";
 import { compileCharacterClass } from "./text.ts";
 
 type BooleanKey = {
@@ -295,13 +287,15 @@ export default class CompletrSettingsTab extends PluginSettingTab {
         const { latex } = this.plugin;
         this.displayCustomEntries(containerEl, {
             heading: "Custom LaTeX commands",
-            description:
-                "Your own suggestions inside math blocks. In the replacement, # marks a placeholder (jump with Enter) and ~ the final cursor position.",
+            description: "Your own suggestions inside math blocks.",
+            noun: ["command", "commands"],
             addButton: "Add command",
             modal: {
                 title: "Add LaTeX command",
                 namePlaceholder: "\\frac{#}{#}",
                 replacementPlaceholder: "\\frac{#}{#}",
+                syntaxHelp:
+                    "The inserted text. # marks a placeholder (jump to the next one with Enter), ~ the final cursor position. May span multiple lines.",
                 nameRequired: false,
             },
             fileName: CUSTOM_LATEX_COMMANDS_FILE,
@@ -321,13 +315,15 @@ export default class CompletrSettingsTab extends PluginSettingTab {
             "Suggest your own snippets outside of math blocks: type the start of a snippet's name to insert its text.",
         );
         this.displayCustomEntries(containerEl, {
-            description:
-                "In the text, {{}} marks a placeholder (jump with Enter), {{some text}} a placeholder with default text and {{cursor}} the final cursor position. Snippets may span multiple lines.",
+            description: "Text templates you insert by typing the start of their name.",
+            noun: ["snippet", "snippets"],
             addButton: "Add snippet",
             modal: {
                 title: "Add snippet",
                 namePlaceholder: "meeting",
                 replacementPlaceholder: "## Meeting {{title}}\nAttendees: {{}}\n\n{{cursor}}",
+                syntaxHelp:
+                    "The inserted text. {{}} marks a placeholder (jump to the next one with Enter), {{some text}} a placeholder with default text, {{cursor}} the final cursor position. May span multiple lines.",
                 nameRequired: true,
             },
             fileName: SNIPPETS_FILE,
@@ -343,6 +339,8 @@ export default class CompletrSettingsTab extends PluginSettingTab {
         opts: {
             heading?: string;
             description: string;
+            /** Singular and plural */
+            noun: [string, string];
             addButton: string;
             modal: CustomEntryModalOptions;
             fileName: string;
@@ -370,34 +368,42 @@ export default class CompletrSettingsTab extends PluginSettingTab {
                         this.display();
                     }),
             );
-        group.addSetting((s) =>
-            s.setDesc(opts.description).addButton((b) =>
+
+        const openEditor = (index: number | null, done: () => void) =>
+            new CustomEntryModal(this.app, opts.modal, index === null ? null : opts.get()[index], async (entry) => {
+                const entries = [...opts.get()];
+                if (index === null) entries.push(entry);
+                else entries[index] = entry;
+                await opts.set(entries);
+                done();
+            }).open();
+
+        const count = opts.get().length;
+        group.addSetting((s) => {
+            s.setName(count === 1 ? `1 ${opts.noun[0]}` : `${count} ${opts.noun[1]}`).setDesc(opts.description);
+            if (count > 0)
+                s.addButton((b) =>
+                    b.setButtonText("Manage").onClick(() =>
+                        new ListModal<CustomEntry>(this.app, {
+                            title: opts.heading ?? opts.noun[1][0].toUpperCase() + opts.noun[1].substring(1),
+                            emptyText: `No ${opts.noun[1]} yet.`,
+                            items: opts.get,
+                            name: (e) => e.displayName,
+                            description: (e) => (e.replacement !== e.displayName ? e.replacement : undefined),
+                            onEdit: (_, index, refresh) => openEditor(index, refresh),
+                            onRemove: (_, index) => opts.set(opts.get().filter((__, j) => j !== index)),
+                            add: { text: opts.addButton, run: (refresh) => openEditor(null, refresh) },
+                            onClose: () => this.display(),
+                        }).open(),
+                    ),
+                );
+            s.addButton((b) =>
                 b
                     .setButtonText(opts.addButton)
                     .setCta()
-                    .onClick(() =>
-                        new CustomEntryModal(this.app, opts.modal, async (displayName, replacement) => {
-                            await opts.set([...opts.get(), { displayName, replacement }]);
-                            this.display();
-                        }).open(),
-                    ),
-            ),
-        );
-        const entries = opts.get();
-        entries.forEach((entry, i) =>
-            group.addSetting((s) => {
-                s.setName(entry.displayName).addExtraButton((b) =>
-                    b
-                        .setIcon("trash")
-                        .setTooltip("Remove")
-                        .onClick(async () => {
-                            await opts.set(entries.filter((_, j) => j !== i));
-                            this.display();
-                        }),
-                );
-                if (entry.replacement !== entry.displayName) s.setDesc(entry.replacement);
-            }),
-        );
+                    .onClick(() => openEditor(null, () => this.display())),
+            );
+        });
     }
 
     private displayFrontMatter(containerEl: HTMLElement) {
@@ -481,42 +487,45 @@ export default class CompletrSettingsTab extends PluginSettingTab {
         );
         this.toggle(group, "wordListProviderEnabled", "Enabled", "Suggest words from word list files.");
 
-        const fileInput = createEl("input", {
-            attr: { type: "file", multiple: true, accept: ".txt,.dic,.lst,text/plain" },
-        });
-        fileInput.onchange = async () => {
-            const files = Array.from(fileInput.files ?? []);
-            let changed = false;
-            for (const file of files) {
-                try {
-                    const success = await this.plugin.wordList.importWordList(
-                        file.name,
-                        decodeText(await file.arrayBuffer()),
-                    );
-                    changed ||= success;
-                    if (!success) new Notice(`Unable to import ${file.name} because it already exists.`);
-                } catch (e) {
-                    console.error(e);
-                    new Notice("Error while importing " + file.name);
-                }
-            }
-            fileInput.value = "";
-            if (!changed) return;
-            await this.reloadWords();
-            this.display();
-        };
+        group.addSetting((s) => {
+            s.setName("Word list files").setDesc("Text files with one word per line.");
+            s.settingEl.addClass("completr-drop-target");
+            // Created in the setting's own document: settings can open in a popout window, and a file dialog can
+            // only be opened by an input of the window that received the click.
+            const fileInput = s.controlEl.createEl("input", {
+                attr: { type: "file", multiple: true, accept: ".txt,.dic,.lst,text/plain" },
+            });
+            fileInput.hide();
+            fileInput.addEventListener("change", async () => {
+                await this.importWordLists(Array.from(fileInput.files ?? []));
+                fileInput.value = "";
+            });
+            s.controlEl.createSpan({ cls: "completr-drop-hint", text: "or drop files here" });
+            s.addButton((b) =>
+                b
+                    .setButtonText("Import")
+                    .setCta()
+                    .onClick(() => fileInput.click()),
+            );
 
-        group.addSetting((s) =>
-            s
-                .setName("Word list files")
-                .setDesc("Text files with one word per line.")
-                .addButton((b) =>
-                    b
-                        .setButtonText("Import")
-                        .setCta()
-                        .onClick(() => fileInput.click()),
-                ),
-        );
+            const { settingEl } = s;
+            settingEl.addEventListener("dragover", (evt) => {
+                if (!evt.dataTransfer?.types.includes("Files")) return;
+                evt.preventDefault();
+                evt.dataTransfer.dropEffect = "copy";
+                settingEl.addClass("is-dragging-over");
+            });
+            settingEl.addEventListener("dragleave", (evt) => {
+                if (!settingEl.contains(evt.relatedTarget as Node | null)) settingEl.removeClass("is-dragging-over");
+            });
+            settingEl.addEventListener("drop", (evt) => {
+                settingEl.removeClass("is-dragging-over");
+                const files = Array.from(evt.dataTransfer?.files ?? []);
+                if (files.length === 0) return;
+                evt.preventDefault();
+                void this.importWordLists(files);
+            });
+        });
 
         void this.plugin.wordList.getFilePaths().then((paths) => {
             for (const path of paths) {
@@ -571,38 +580,47 @@ export default class CompletrSettingsTab extends PluginSettingTab {
     private displayBlacklist(containerEl: HTMLElement) {
         const { blacklist } = this.plugin;
         const group = new SettingGroup(containerEl).setHeading("Blacklist");
-        group.addSetting((s) =>
-            s.setDesc(
-                blacklist.size > 0
-                    ? "These suggestions are never shown. Add more by selecting a suggestion and pressing Ctrl/Cmd+Shift+D."
-                    : "No suggestions are blacklisted. Hide a suggestion by selecting it in the popup and pressing Ctrl/Cmd+Shift+D.",
-            ),
-        );
-        if (blacklist.size === 0) return;
-
-        group.addSearch((search) =>
-            search.setPlaceholder("Filter...").onChange((query) => {
-                const q = query.toLowerCase();
-                for (const el of Array.from(group.listEl.querySelectorAll<HTMLElement>(".completr-blacklist-item"))) {
-                    el.toggle((el.dataset.entry ?? "").toLowerCase().includes(q));
-                }
-            }),
-        );
-        for (const entry of blacklist.values().sort()) {
-            group.addSetting((s) => {
-                s.settingEl.addClass("completr-blacklist-item");
-                s.settingEl.dataset.entry = entry;
-                s.setName(entry).addExtraButton((b) =>
-                    b
-                        .setIcon("x")
-                        .setTooltip("Remove from blacklist")
-                        .onClick(async () => {
-                            await this.plugin.unblacklistSuggestion(entry);
-                            this.display();
-                        }),
+        group.addSetting((s) => {
+            s.setName(
+                blacklist.size === 1 ? "1 blacklisted suggestion" : `${blacklist.size} blacklisted suggestions`,
+            ).setDesc(
+                "Blacklisted suggestions are never shown. Hide a suggestion by selecting it in the popup and pressing Ctrl/Cmd+Shift+D.",
+            );
+            if (blacklist.size > 0)
+                s.addButton((b) =>
+                    b.setButtonText("Manage").onClick(() =>
+                        new ListModal<string>(this.app, {
+                            title: "Blacklist",
+                            emptyText: "No suggestions are blacklisted.",
+                            items: () => blacklist.values().sort(),
+                            name: (entry) => entry,
+                            onRemove: (entry) => this.plugin.unblacklistSuggestion(entry),
+                            removeTooltip: "Remove from blacklist",
+                            onClose: () => this.display(),
+                        }).open(),
+                    ),
                 );
-            });
+        });
+    }
+
+    private async importWordLists(files: File[]) {
+        let changed = false;
+        for (const file of files) {
+            try {
+                const success = await this.plugin.wordList.importWordList(
+                    file.name,
+                    decodeText(await file.arrayBuffer()),
+                );
+                changed ||= success;
+                if (!success) new Notice(`Unable to import ${file.name} because it already exists.`);
+            } catch (e) {
+                console.error(e);
+                new Notice("Error while importing " + file.name);
+            }
         }
+        if (!changed) return;
+        await this.reloadWords();
+        this.display();
     }
 
     private async reloadWords() {
@@ -614,84 +632,5 @@ export default class CompletrSettingsTab extends PluginSettingTab {
         } finally {
             this.isReloadingWords = false;
         }
-    }
-}
-
-class ConfirmationModal extends Modal {
-    constructor(
-        app: App,
-        title: string,
-        body: string,
-        configureButton: (button: ButtonComponent) => void,
-        onConfirm: () => Promise<unknown>,
-    ) {
-        super(app);
-        this.setTitle(title);
-        this.contentEl.createEl("p", { text: body });
-        new Setting(this.contentEl)
-            .addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
-            .addButton((b) => {
-                configureButton(b);
-                b.onClick(async () => {
-                    b.setDisabled(true);
-                    await onConfirm();
-                    this.close();
-                });
-            });
-    }
-}
-
-interface CustomEntryModalOptions {
-    title: string;
-    namePlaceholder: string;
-    replacementPlaceholder: string;
-    /** If false, the name defaults to the replacement. */
-    nameRequired: boolean;
-}
-
-class CustomEntryModal extends Modal {
-    constructor(
-        app: App,
-        opts: CustomEntryModalOptions,
-        onSubmit: (displayName: string, replacement: string) => Promise<void>,
-    ) {
-        super(app);
-        this.setTitle(opts.title);
-        let displayName = "";
-        let replacement = "";
-        new Setting(this.contentEl)
-            .setName("Name")
-            .setDesc(
-                opts.nameRequired
-                    ? "What you type to get this suggestion. Shown in the popup."
-                    : "Shown in the popup and used for matching. Defaults to the replacement.",
-            )
-            .addText((t) => t.setPlaceholder(opts.namePlaceholder).onChange((v) => (displayName = v)));
-        new Setting(this.contentEl)
-            .setName("Replacement")
-            .setDesc("The inserted text. # marks a placeholder, ~ the final cursor position. May span multiple lines.")
-            .addTextArea((t) => {
-                t.inputEl.rows = 4;
-                t.inputEl.addClass("completr-replacement-input");
-                t.setPlaceholder(opts.replacementPlaceholder).onChange((v) => (replacement = v));
-            });
-        new Setting(this.contentEl).addButton((b) =>
-            b
-                .setButtonText("Add")
-                .setCta()
-                .onClick(async () => {
-                    if (!replacement.trim()) {
-                        new Notice("The replacement can't be empty.");
-                        return;
-                    }
-                    if (opts.nameRequired && !displayName.trim()) {
-                        new Notice("The name can't be empty.");
-                        return;
-                    }
-                    const name = (displayName.trim() || replacement).replace(/\n/g, " ");
-                    await onSubmit(name, replacement);
-                    this.close();
-                }),
-        );
     }
 }

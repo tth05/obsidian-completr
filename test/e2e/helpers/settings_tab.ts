@@ -259,3 +259,79 @@ export async function chooseFiles(obsidian: Obsidian, clickButtonFn: () => Promi
         });
     }
 }
+
+// ---- List modal ("Manage" buttons of the blacklist, custom LaTeX commands and snippets) ----------------------------
+
+/** Entry names in the open list modal, null if none is open. */
+export function listModalNames(obsidian: Obsidian): Promise<string[] | null> {
+    return obsidian.eval(() => {
+        const modal = Array.from(document.querySelectorAll(".completr-list-modal")).at(-1);
+        if (!modal) return null;
+        return Array.from(modal.querySelectorAll(".completr-list-item .setting-item-name")).map(
+            (n) => n.textContent ?? "",
+        );
+    });
+}
+
+/** The message below the entries of the open list modal (empty list, truncation, filter count). */
+export function listModalMessage(obsidian: Obsidian): Promise<string | null> {
+    return obsidian.eval(
+        () =>
+            Array.from(document.querySelectorAll(".completr-list-modal"))
+                .at(-1)
+                ?.querySelector(".completr-list-message")?.textContent ?? null,
+    );
+}
+
+export async function filterListModal(obsidian: Obsidian, text: string) {
+    await obsidian.eval((text: string) => {
+        const modal = Array.from(document.querySelectorAll(".completr-list-modal")).at(-1)!;
+        const input = modal.querySelector<HTMLInputElement>("input[type=search]")!;
+        input.value = text;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+    }, text);
+}
+
+/** Clicks an icon button (by tooltip) of an entry in the open list modal. */
+export async function clickListModalButton(obsidian: Obsidian, name: string, tooltip: string) {
+    await obsidian.eval(
+        (name: string, tooltip: string) => {
+            const modal = Array.from(document.querySelectorAll(".completr-list-modal")).at(-1)!;
+            const item = Array.from(modal.querySelectorAll(".completr-list-item")).find(
+                (i) => i.querySelector(".setting-item-name")?.textContent === name,
+            );
+            const button = Array.from(item?.querySelectorAll<HTMLElement>(".extra-setting-button") ?? []).find(
+                (b) => b.getAttribute("aria-label") === tooltip,
+            );
+            if (!button) throw new Error(`Button "${tooltip}" of entry "${name}" not found`);
+            button.click();
+        },
+        name,
+        tooltip,
+    );
+}
+
+/** Closes the topmost modal (on top of the settings) like a user would, with Escape. */
+export async function closeTopModal(obsidian: Obsidian) {
+    const count = () => obsidian.eval(() => document.querySelectorAll(".modal:not(.mod-settings)").length);
+    const before = await count();
+    await obsidian.press("Escape");
+    await obsidian.waitFor(async () => (await count()) < before, { what: "the modal to close" });
+}
+
+/** Sets the name and replacement fields of the open add/edit entry modal. */
+export async function fillEntryModal(obsidian: Obsidian, name: string | null, replacement: string | null) {
+    await obsidian.eval(
+        (name: string | null, replacement: string | null) => {
+            const modal = Array.from(document.querySelectorAll(".modal:not(.mod-settings)")).at(-1)!;
+            const set = (el: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+                el.value = value;
+                el.dispatchEvent(new Event("input", { bubbles: true }));
+            };
+            if (replacement !== null) set(modal.querySelector("textarea")!, replacement);
+            if (name !== null) set(modal.querySelector<HTMLInputElement>("input[type=text]")!, name);
+        },
+        name,
+        replacement,
+    );
+}

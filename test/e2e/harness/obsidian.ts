@@ -118,6 +118,8 @@ async function waitUntil<T>(
 export class Obsidian {
     private constructor(
         readonly cdp: CdpClient,
+        /** The DevTools port, to connect to other windows (e.g. popouts). */
+        private readonly port: string,
         private readonly proc: Bun.Subprocess,
         /** Root temp directory containing the vault and the Obsidian profile. */
         readonly baseDir: string,
@@ -191,7 +193,7 @@ export class Obsidian {
                 "the Obsidian window",
             );
             const cdp = await CdpClient.connect(wsUrl);
-            obsidian = new Obsidian(cdp, proc, baseDir, vaultDir);
+            obsidian = new Obsidian(cdp, port, proc, baseDir, vaultDir);
             // CodeMirror only reports focus if the document has OS focus, which a background test window never has.
             await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
 
@@ -281,6 +283,31 @@ export class Obsidian {
         opts: { timeout?: number; what?: string } = {},
     ) {
         return waitUntil(fn, opts.timeout ?? 2_000, opts.what ?? "condition");
+    }
+
+    /**
+     * Connects to another Obsidian window (e.g. the settings, which open in a popout window by default). The caller
+     * must close the client.
+     */
+    async connectToWindow(
+        matches: (page: { title: string; url: string }) => boolean = (p) =>
+            !p.url.startsWith("app://obsidian.md/index.html"),
+    ): Promise<CdpClient> {
+        const url = await this.waitFor(
+            async () => {
+                const pages = (await (await fetch(`http://127.0.0.1:${this.port}/json`)).json()) as {
+                    type: string;
+                    title: string;
+                    url: string;
+                    webSocketDebuggerUrl: string;
+                }[];
+                return pages.find((p) => p.type === "page" && matches(p))?.webSocketDebuggerUrl;
+            },
+            { timeout: 5_000, what: "another window" },
+        );
+        const client = await CdpClient.connect(url);
+        await client.send("Emulation.setFocusEmulationEnabled", { enabled: true });
+        return client;
     }
 
     // ---- Notes and editor ---------------------------------------------------------------------------------------

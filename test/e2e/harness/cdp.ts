@@ -4,11 +4,21 @@
 export class CdpClient {
     private nextId = 0;
     private readonly pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+    private readonly listeners = new Map<string, Set<(params: unknown) => void>>();
 
     private constructor(private readonly ws: WebSocket) {
         ws.addEventListener("message", (e) => {
-            const msg = JSON.parse(e.data as string) as { id?: number; result?: unknown; error?: { message: string } };
-            if (msg.id === undefined) return;
+            const msg = JSON.parse(e.data as string) as {
+                id?: number;
+                method?: string;
+                params?: unknown;
+                result?: unknown;
+                error?: { message: string };
+            };
+            if (msg.id === undefined) {
+                if (msg.method) for (const listener of this.listeners.get(msg.method) ?? []) listener(msg.params);
+                return;
+            }
             const p = this.pending.get(msg.id);
             if (!p) return;
             this.pending.delete(msg.id);
@@ -58,6 +68,30 @@ export class CdpClient {
             );
         }
         return res.result.value as T;
+    }
+
+    /** Subscribes to a CDP event (the domain must be enabled). Returns a function that unsubscribes. */
+    on<T = unknown>(method: string, listener: (params: T) => void): () => void {
+        let set = this.listeners.get(method);
+        if (!set) this.listeners.set(method, (set = new Set()));
+        const l = listener as (params: unknown) => void;
+        set.add(l);
+        return () => set.delete(l);
+    }
+
+    /** Resolves with the params of the next event of the given type. */
+    waitForEvent<T = unknown>(method: string, timeoutMs = 2_000): Promise<T> {
+        return new Promise<T>((resolve, reject) => {
+            const timer = setTimeout(() => {
+                off();
+                reject(new Error(`Timed out waiting for ${method}`));
+            }, timeoutMs);
+            const off = this.on<T>(method, (params) => {
+                clearTimeout(timer);
+                off();
+                resolve(params);
+            });
+        });
     }
 
     close() {
