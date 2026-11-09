@@ -2,6 +2,7 @@ import {
     EditorSelection,
     type EditorState,
     type Extension,
+    MapMode,
     StateEffect,
     StateField,
     type Transaction,
@@ -20,6 +21,8 @@ export const COLOR_COUNT = 7;
 interface Placeholder {
     from: number;
     to: number;
+    /** Id of the inserted snippet this placeholder belongs to. Snippets can be nested. */
+    snippet: number;
     /** Index into the placeholder colors. Each inserted snippet gets its own color. */
     color: number;
     /** The final cursor position ("~"). It is jumped to last and not highlighted. */
@@ -85,16 +88,28 @@ export function parseSnippet(snippet: string, continuationPrefix = "", syntax: S
 
 const addSnippet = StateEffect.define<Placeholder[]>();
 const removeCurrent = StateEffect.define<null>();
+/** Removes all placeholders of a snippet. */
+const removeSnippet = StateEffect.define<number>();
 const clearAll = StateEffect.define<null>();
+
+let nextSnippetId = 0;
 
 function mapPlaceholders(placeholders: SnippetState, tr: Transaction): SnippetState {
     if (!tr.docChanged) return placeholders;
-    return placeholders.map((p) => {
-        // Text typed at either edge belongs to the placeholder
-        const from = tr.changes.mapPos(p.from, -1);
-        const to = Math.max(from, tr.changes.mapPos(p.to, 1));
-        return { ...p, from, to };
-    });
+    const current = placeholders[0];
+    const result: Placeholder[] = [];
+    for (const p of placeholders) {
+        // Text typed at either edge of the current placeholder belongs to it, as it does for the placeholders of outer
+        // snippets around it. The other placeholders of the same snippet must not grow, otherwise adjacent ones
+        // (e.g. "##") would swallow the text typed into the current one.
+        const grows = p === current || p.snippet !== current.snippet;
+        // Placeholders inside deleted text (e.g. the whole note was replaced by a sync) are dropped
+        const from = tr.changes.mapPos(p.from, grows ? -1 : 1, MapMode.TrackDel);
+        const to = tr.changes.mapPos(p.to, 1, MapMode.TrackDel);
+        if (from === null || to === null) continue;
+        result.push({ ...p, from, to: Math.max(from, to) });
+    }
+    return result;
 }
 
 function contains(p: Placeholder, pos: number): boolean {
@@ -108,6 +123,7 @@ const snippetField = StateField.define<SnippetState>({
         for (const effect of tr.effects) {
             if (effect.is(addSnippet)) result = [...effect.value, ...result];
             else if (effect.is(removeCurrent)) result = result.slice(1);
+            else if (effect.is(removeSnippet)) result = result.filter((p) => p.snippet !== effect.value);
             else if (effect.is(clearAll)) result = [];
         }
 
@@ -187,14 +203,18 @@ export function insertSnippet(
     let color = 0;
     while (used.has(color) && color < COLOR_COUNT - 1) color++;
 
+    const snippetId = nextSnippetId++;
     const placeholders: Placeholder[] = parsed.placeholderRanges.map(([start, end]) => ({
         from: from + start,
         to: from + end,
+        snippet: snippetId,
         color,
         isFinal: false,
     }));
-    if (parsed.finalCursor !== null && placeholders.length > 0)
-        placeholders.push({ from: from + parsed.finalCursor, to: from + parsed.finalCursor, color, isFinal: true });
+    if (parsed.finalCursor !== null && placeholders.length > 0) {
+        const pos = from + parsed.finalCursor;
+        placeholders.push({ from: pos, to: pos, snippet: snippetId, color, isFinal: true });
+    }
 
     const first = placeholders[0];
     const cursor = from + (parsed.finalCursor ?? parsed.text.length);
@@ -217,10 +237,30 @@ export function jumpToNextPlaceholder(view: EditorView) {
     if (!current) return;
 
     const next = placeholders[1];
+    if (next?.isFinal) {
+        // The snippet is done, outer snippets (if any) continue
+        view.dispatch({
+            selection: EditorSelection.cursor(next.from),
+            effects: removeSnippet.of(next.snippet),
+            scrollIntoView: true,
+        });
+        return;
+    }
+
+    if (next && next.snippet !== current.snippet && next.from <= current.from && next.to >= current.to) {
+        // A nested snippet is done. Continue typing after it, inside the placeholder of the outer snippet.
+        view.dispatch({
+            selection: EditorSelection.cursor(next.to),
+            effects: removeCurrent.of(null),
+            scrollIntoView: true,
+        });
+        return;
+    }
+
     if (next) {
         view.dispatch({
             selection: EditorSelection.range(next.from, next.to),
-            effects: next.isFinal ? clearAll.of(null) : removeCurrent.of(null),
+            effects: removeCurrent.of(null),
             scrollIntoView: true,
         });
         return;

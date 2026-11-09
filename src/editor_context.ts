@@ -48,7 +48,9 @@ export function getCursorContext(state: EditorState, pos: number): CursorContext
             if (node.from < pos && node.name.includes("formatting-math-begin")) lastBegin = node.name;
         },
     });
-    return { inCode: false, math: lastBegin.includes("math-block") ? "block" : "inline" };
+    // No opening delimiter on this line: a continuation line of a multi-line $ block. Obsidian doesn't mark those as
+    // HyperMD-math inside block quotes / callouts.
+    return { inCode: false, math: lastBegin === "" || lastBegin.includes("math-block") ? "block" : "inline" };
 }
 
 /**

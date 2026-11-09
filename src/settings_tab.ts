@@ -274,7 +274,7 @@ export default class CompletrSettingsTab extends PluginSettingTab {
             group,
             "latexBuiltInCommands",
             "Built-in commands",
-            "Suggest the built-in commands. Disable to only use your own. Single commands can be hidden with the blacklist (Shift+D).",
+            "Suggest the built-in commands. Disable to only use your own. Single commands can be hidden with the blacklist (Ctrl/Cmd+Shift+D).",
         );
         this.toggle(
             group,
@@ -574,8 +574,8 @@ export default class CompletrSettingsTab extends PluginSettingTab {
         group.addSetting((s) =>
             s.setDesc(
                 blacklist.size > 0
-                    ? "These suggestions are never shown. Add more by selecting a suggestion and pressing Shift+D."
-                    : "No suggestions are blacklisted. Hide a suggestion by selecting it in the popup and pressing Shift+D.",
+                    ? "These suggestions are never shown. Add more by selecting a suggestion and pressing Ctrl/Cmd+Shift+D."
+                    : "No suggestions are blacklisted. Hide a suggestion by selecting it in the popup and pressing Ctrl/Cmd+Shift+D.",
             ),
         );
         if (blacklist.size === 0) return;
@@ -597,8 +597,7 @@ export default class CompletrSettingsTab extends PluginSettingTab {
                         .setIcon("x")
                         .setTooltip("Remove from blacklist")
                         .onClick(async () => {
-                            await blacklist.remove(entry);
-                            this.plugin.latex.rebuildIndex();
+                            await this.plugin.unblacklistSuggestion(entry);
                             this.display();
                         }),
                 );

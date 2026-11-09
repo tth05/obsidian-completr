@@ -44,7 +44,7 @@ All keys are commands, change them under *Settings -> Hotkeys* (filter for "Comp
 | Insert selected suggestion       | `Enter`                 |
 | Close suggestion popup           | `Escape`                |
 | Jump to next snippet placeholder | `Enter`                 |
-| Add selected to the blacklist    | `Shift + D`             |
+| Add selected to the blacklist    | `Ctrl/Cmd + Shift + D`  |
 | Bypass the popup, press Enter    | `Ctrl + Enter`          |
 | Bypass the popup, press Tab      | `Ctrl + Tab`            |
 | Toggle automatic popup           | -                       |
@@ -58,7 +58,7 @@ All keys are commands, change them under *Settings -> Hotkeys* (filter for "Comp
 
 ### Blacklist
 
-Select a suggestion and press `Shift + D` to never see it again. Blacklisted suggestions are listed at the bottom of the
+Select a suggestion and press `Ctrl/Cmd + Shift + D` to never see it again. Blacklisted suggestions are listed at the bottom of the
 settings, where they can be removed again.
 
 ### Custom LaTeX commands

@@ -1,5 +1,5 @@
 import { Prec } from "@codemirror/state";
-import { type EditorView, keymap } from "@codemirror/view";
+import { EditorView, keymap } from "@codemirror/view";
 import { around } from "monkey-around";
 import { type Command, type Editor, type Hotkey, type KeymapContext, type Modifier, Notice, Platform } from "obsidian";
 import type CompletrPlugin from "./main.ts";
@@ -129,7 +129,7 @@ export function registerCommands(plugin: CompletrPlugin) {
         editorCommand(
             "completr-blacklist-current-word",
             "Add the selected suggestion to the blacklist",
-            [{ modifiers: ["Shift"], key: "D" }],
+            [{ modifiers: ["Mod", "Shift"], key: "D" }],
             isFocused,
             () => {
                 const item = popup.getSelectedItem();
@@ -203,29 +203,31 @@ export function createKeymap(plugin: CompletrPlugin) {
         return false;
     };
 
-    return Prec.highest(
-        keymap.of([
-            { key: "ArrowUp", run: passThrough },
-            { key: "ArrowDown", run: passThrough },
-            { key: "Enter", run: passThrough },
-            { key: "Escape", run: passThrough },
-            {
-                key: "Tab",
-                run: (view: EditorView) => {
-                    if (popup.isOpen) {
-                        if (plugin.settings.insertWithTab && popup.isFocused()) {
-                            popup.applySelectedItem();
-                            return true;
-                        }
-                        popup.close();
-                    }
-                    if (plugin.settings.jumpWithTab && isInPlaceholder(view.state)) {
+    return [
+        Prec.highest(
+            keymap.of([
+                { key: "ArrowUp", run: passThrough },
+                { key: "ArrowDown", run: passThrough },
+                { key: "Enter", run: passThrough },
+                { key: "Escape", run: passThrough },
+                { key: "Tab", run: passThrough },
+            ]),
+        ),
+        // The optional Tab actions run as a keydown handler: plugins like LaTeX Suite handle Tab in their own keydown
+        // handlers, which CodeMirror runs before any keymap.
+        Prec.highest(
+            EditorView.domEventHandlers({
+                keydown: (evt, view) => {
+                    if (evt.key !== "Tab" || evt.shiftKey || evt.ctrlKey || evt.altKey || evt.metaKey) return false;
+                    const { settings } = plugin;
+                    if (settings.insertWithTab && popup.isFocused()) popup.applySelectedItem();
+                    else if (settings.jumpWithTab && !popup.isOpen && isInPlaceholder(view.state))
                         jumpToNextPlaceholder(view);
-                        return true;
-                    }
-                    return false;
+                    else return false;
+                    evt.preventDefault();
+                    return true;
                 },
-            },
-        ]),
-    );
+            }),
+        ),
+    ];
 }

@@ -183,8 +183,9 @@ export class FrontMatterProvider implements SuggestionProvider {
         const keys = new Map<string, KeyInfo>();
         for (const [key, value] of Object.entries(cache.frontmatter)) {
             if (key === "position" || key === "tags") continue;
-            const values = valueToStrings(value);
-            if (values) keys.set(key, { key, isList: Array.isArray(value), values: new Set(values) });
+            // Keys without (suggestable) values, e.g. "key:" or objects, are still suggested as keys
+            const values = valueToStrings(value) ?? [];
+            keys.set(key, { key, isList: Array.isArray(value), values: new Set(values) });
         }
 
         // Tags come from the whole note (front matter and inline), without the leading "#"

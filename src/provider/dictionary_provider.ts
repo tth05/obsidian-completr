@@ -81,15 +81,19 @@ export abstract class DictionaryProvider implements SuggestionProvider {
 
         const sorted = sortWords(prefix, settings.sortOrder, settings.sortLocale);
         sorted.length = Math.min(sorted.length, MAX_RESULTS);
-        return sorted.concat(fuzzy).map((m) => {
+        const result: Suggestion[] = [];
+        for (const m of sorted.concat(fuzzy)) {
             const text = appendMode && m.isPrefixMatch ? applyTypedCasing(query, m.word) : m.word;
-            return {
+            // Append mode keeps the typed casing, so a known word may turn into exactly what was typed
+            if (text === query) continue;
+            result.push({
                 displayName: text,
                 replacement: text,
                 matches: m.matches,
                 isFuzzy: !m.isPrefixMatch,
                 appendSpace: settings.insertSpaceAfterWord,
-            };
-        });
+            });
+        }
+        return result;
     }
 }

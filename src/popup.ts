@@ -1,3 +1,4 @@
+import { Transaction } from "@codemirror/state";
 import type { ViewUpdate } from "@codemirror/view";
 import {
     type App,
@@ -24,6 +25,41 @@ export enum SelectionDirection {
 }
 
 const MAX_SUGGESTIONS = 100;
+
+/**
+ * Whether a transaction is the user typing. Besides CodeMirror's own "input.type" transactions, this accepts changes
+ * without a user event that add exactly one character in front of the cursor. That's how plugins that handle typing
+ * themselves insert it (e.g. LaTeX Suite replaces "\a" with "\al" when "l" is typed).
+ */
+export function isTyping(tr: Transaction): boolean {
+    if (tr.isUserEvent("input.type")) return true;
+    if (tr.annotation(Transaction.userEvent) !== undefined || !tr.docChanged) return false;
+
+    const before = tr.startState.selection.main;
+    const after = tr.state.selection.main;
+    if (!before.empty || !after.empty) return false;
+
+    let count = 0;
+    let typed = false;
+    tr.changes.iterChanges((fromA, toA, _fromB, toB, inserted) => {
+        count++;
+        typed =
+            toA === before.head &&
+            toB === after.head &&
+            inserted.length - (toA - fromA) === 1 &&
+            !inserted.sliceString(inserted.length - 1).includes("\n");
+    });
+    return count === 1 && typed;
+}
+
+/** Whether a transaction changes the document without changing its content (e.g. replacing "$" with "$"). */
+function isNoop(tr: Transaction): boolean {
+    let noop = true;
+    tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+        if (noop && tr.startState.doc.sliceString(fromA, toA) !== inserted.toString()) noop = false;
+    });
+    return noop;
+}
 
 export class SuggestionPopup extends EditorSuggest<Suggestion> {
     /** Whether an item is selected, i.e. Enter inserts it. Without focus, keys go to the editor. */
@@ -75,7 +111,8 @@ export class SuggestionPopup extends EditorSuggest<Suggestion> {
         if (!update.view.hasFocus) return;
         if (update.docChanged) {
             // Indenting, pasting, deleting, ... should not open the popup, only typing does.
-            this.lastChangeWasTyping = update.transactions.some((tr) => tr.isUserEvent("input.type"));
+            const changes = update.transactions.filter((tr) => tr.docChanged && !isNoop(tr));
+            if (changes.length > 0) this.lastChangeWasTyping = changes.some(isTyping);
         } else if (update.selectionSet) {
             this.lastChangeWasTyping = false;
             if (this.isOpen) this.close();

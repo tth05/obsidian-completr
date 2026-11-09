@@ -123,7 +123,10 @@ export function parseCalloutSuggestions(json: string): Suggestion[] {
     if (!Array.isArray(data)) throw new Error(`Invalid ${CALLOUT_SUGGESTIONS_FILE}: JSON root must be an array`);
 
     return data.map((entry: unknown) => {
-        if (typeof entry === "string") return suggestion(entry);
+        if (typeof entry === "string") {
+            if (entry.includes("\n")) throw new Error("Display name cannot contain a newline: " + entry);
+            return suggestion(entry);
+        }
         const obj = (entry ?? {}) as Record<string, unknown>;
         if (typeof obj.displayName !== "string" || typeof obj.replacement !== "string")
             throw new Error(

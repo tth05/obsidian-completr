@@ -122,6 +122,14 @@ export const DEFAULT_SETTINGS: CompletrSettings = {
     calloutProviderSource: CalloutProviderSource.COMPLETR,
 };
 
+/** Allowed values of the settings that are a choice between options. */
+const CHOICES: Partial<Record<keyof CompletrSettings, readonly string[]>> = {
+    wordInsertionMode: Object.values(WordInsertionMode),
+    sortOrder: Object.values(SortOrder),
+    iconMode: Object.values(IconMode),
+    calloutProviderSource: Object.values(CalloutProviderSource),
+};
+
 /**
  * Builds the settings from the saved data, filling in defaults and migrating old values. Unknown keys from old versions
  * are dropped.
@@ -131,6 +139,8 @@ export function loadSettings(data: unknown): { settings: CompletrSettings; migra
     const settings = { ...DEFAULT_SETTINGS };
     for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof CompletrSettings)[]) {
         const value = saved[key];
+        const choices = CHOICES[key];
+        if (choices && !choices.includes(value as string)) continue;
         if (value !== undefined && typeof value === typeof DEFAULT_SETTINGS[key]) {
             (settings as Record<string, unknown>)[key] = value;
         }

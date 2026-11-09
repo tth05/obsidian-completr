@@ -99,7 +99,7 @@ export default class CompletrPlugin extends Plugin {
         const { metadataCache, vault } = this.app;
         this.frontMatter.loadAll(metadataCache, vault.getMarkdownFiles());
         const editor = this.app.workspace.activeEditor?.editor;
-        if (editor) this.scanEditor(editor);
+        if (editor) this.scanEditor(editor, false);
     }
 
     private registerEvents() {
@@ -112,7 +112,7 @@ export default class CompletrPlugin extends Plugin {
             workspace.on("file-open", (file) => {
                 if (!(file instanceof TFile)) return;
                 const editor = workspace.getActiveViewOfType(MarkdownView)?.editor;
-                if (editor) this.scanEditor(editor);
+                if (editor) this.scanEditor(editor, false);
                 else
                     void vault
                         .cachedRead(file)
@@ -120,14 +120,19 @@ export default class CompletrPlugin extends Plugin {
             }),
         );
 
-        const scanLater = debounce((editor: Editor) => this.scanEditor(editor), SCAN_DELAY_MS, true);
+        const scanLater = debounce((editor: Editor) => this.scanEditor(editor, true), SCAN_DELAY_MS, true);
         this.registerEvent(workspace.on("editor-change", (editor) => scanLater(editor)));
     }
 
     /** Picks up the words of the note being edited, except the one at the cursor which might be incomplete. */
-    private scanEditor(editor: Editor) {
+    /** @param editing skip the word at the cursor, which might still be typed */
+    private scanEditor(editor: Editor, editing: boolean) {
         if (!this.settings.fileScannerProviderEnabled) return;
-        this.fileScanner.setCurrentFileText(editor.getValue(), this.settings, editor.posToOffset(editor.getCursor()));
+        this.fileScanner.setCurrentFileText(
+            editor.getValue(),
+            this.settings,
+            editing ? editor.posToOffset(editor.getCursor()) : -1,
+        );
     }
 
     async saveSettings() {
@@ -136,6 +141,14 @@ export default class CompletrPlugin extends Plugin {
 
     getProviderIcon(providerId: string | undefined): string | undefined {
         return this.providers.find((p) => p.id === providerId)?.icon;
+    }
+
+    /** Shows a blacklisted suggestion again. Scanned words come back once they are scanned again. */
+    async unblacklistSuggestion(displayName: string) {
+        await this.blacklist.remove(displayName);
+        this.latex.rebuildIndex();
+        // The word was removed from the word lists' index when it was blacklisted
+        await this.wordList.load(this.settings);
     }
 
     /** Hides a suggestion everywhere and forgets it as a scanned word. */

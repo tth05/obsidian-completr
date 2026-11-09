@@ -13,17 +13,18 @@ export function parseCustomEntries(json: string): CustomEntry[] {
     const data: unknown = JSON.parse(json);
     if (!Array.isArray(data)) throw new Error("The JSON root must be an array");
 
-    return data.map((entry: unknown, i) => {
-        if (typeof entry === "string") return { displayName: entry, replacement: entry };
-        if (entry && typeof entry === "object") {
+    return data.map((entry: unknown, i): CustomEntry => {
+        let result: CustomEntry | null = null;
+        if (typeof entry === "string") result = { displayName: entry, replacement: entry };
+        else if (entry && typeof entry === "object") {
             const { displayName, replacement } = entry as Partial<CustomEntry>;
-            if (typeof displayName === "string" && typeof replacement === "string") {
-                if (displayName.includes("\n"))
-                    throw new Error("Display name cannot contain a newline: " + displayName);
-                return { displayName, replacement };
-            }
+            if (typeof displayName === "string" && typeof replacement === "string")
+                result = { displayName, replacement };
         }
-        throw new Error(`Invalid entry at index ${i}: ${JSON.stringify(entry)}`);
+        if (!result) throw new Error(`Invalid entry at index ${i}: ${JSON.stringify(entry)}`);
+        if (result.displayName.includes("\n"))
+            throw new Error("Display name cannot contain a newline: " + result.displayName);
+        return result;
     });
 }
 

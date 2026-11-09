@@ -10,22 +10,23 @@ const SAVE_DELAY_MS = 2000;
 const regexCache = new Map<string, RegExp>();
 
 /**
- * Builds the regex used to find words. Math, code, URLs and link destinations are matched too, but without a capture
+ * Builds the regex used to find words. Math, code, URLs and link destinations are matched too, but not as the "word"
  * group, so they are skipped.
  */
 function getScanRegex(characterRegex: string): RegExp {
     let regex = regexCache.get(characterRegex);
     if (!regex) {
         const skip = [
-            "\\$+[^$]*?\\$+", // math
-            "`+[\\s\\S]*?`+", // code
+            "\\$\\$[\\s\\S]*?\\$\\$", // display math
+            "\\$(?!\\s)[^$\\n]*?(?<!\\s)\\$", // inline math, like Obsidian: "$5 and $6" is not math
+            "(`+)[\\s\\S]*?\\1", // code, closed by a backtick run of the same length
             "https?:\\/\\/[^\\s)\\]>]+", // URLs
             "\\]\\([^)\\n]*\\)", // markdown link destinations
         ].join("|");
         try {
-            regex = new RegExp(`${skip}|([${characterRegex}]+)`, "gu");
+            regex = new RegExp(`${skip}|(?<word>[${characterRegex}]+)`, "gu");
         } catch {
-            regex = new RegExp(`${skip}|([\\p{L}\\p{M}]+)`, "gu");
+            regex = new RegExp(`${skip}|(?<word>[\\p{L}\\p{M}]+)`, "gu");
         }
         regexCache.set(characterRegex, regex);
     }
@@ -37,7 +38,7 @@ function getScanRegex(characterRegex: string): RegExp {
 export function scanWords(text: string, settings: CompletrSettings, excludeOffset = -1): string[] {
     const words: string[] = [];
     for (const match of text.matchAll(getScanRegex(settings.characterRegex))) {
-        const word = match[1];
+        const word = match.groups?.word;
         if (!word || word.length < settings.minWordLength) continue;
         if (excludeOffset >= match.index && excludeOffset <= match.index + word.length) continue;
         words.push(word);
