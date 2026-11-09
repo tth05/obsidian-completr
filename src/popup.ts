@@ -11,6 +11,7 @@ import {
     type TFile,
 } from "obsidian";
 import { getCursorContext } from "./editor_context.ts";
+import { renderLatexPreview } from "./latex_preview.ts";
 import type CompletrPlugin from "./main.ts";
 import type { Suggestion, SuggestionContext } from "./provider/provider.ts";
 import { IconMode } from "./settings.ts";
@@ -193,6 +194,9 @@ export class SuggestionPopup extends EditorSuggest<Suggestion> {
         const text = el.createDiv({ cls: "completr-suggestion-text" });
         if (value.matches?.length) renderMatches(text, value.displayName, value.matches);
         else text.setText(value.displayName);
+
+        if (value.providerId === "latex" && this.settings.latexPreview)
+            renderLatexPreview(el.createDiv({ cls: "completr-suggestion-preview" }), value.displayName);
     }
 
     selectSuggestion(value: Suggestion): void {
@@ -210,7 +214,7 @@ export class SuggestionPopup extends EditorSuggest<Suggestion> {
 
         this.close();
         if (value.isSnippet) {
-            insertSnippet(editor.cm, from, to, replacement);
+            insertSnippet(editor.cm, from, to, replacement, value.snippetSyntax);
         } else {
             editor.cm.dispatch({
                 changes: { from, to, insert: replacement },

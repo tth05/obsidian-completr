@@ -9,6 +9,7 @@ import { FrontMatterProvider } from "./provider/front_matter_provider.ts";
 import { LatexProvider } from "./provider/latex_provider.ts";
 import type { SuggestionProvider } from "./provider/provider.ts";
 import { FileScannerProvider } from "./provider/scanner_provider.ts";
+import { SnippetProvider } from "./provider/snippet_provider.ts";
 import { WordListProvider } from "./provider/word_list_provider.ts";
 import { type CompletrSettings, loadSettings } from "./settings.ts";
 import CompletrSettingsTab from "./settings_tab.ts";
@@ -28,6 +29,7 @@ export default class CompletrPlugin extends Plugin {
     frontMatter!: FrontMatterProvider;
     callout!: CalloutProvider;
     latex!: LatexProvider;
+    snippets!: SnippetProvider;
     fileScanner!: FileScannerProvider;
     wordList!: WordListProvider;
     /** In priority order. */
@@ -51,9 +53,10 @@ export default class CompletrPlugin extends Plugin {
         this.frontMatter = new FrontMatterProvider();
         this.callout = new CalloutProvider(this, this.files, this.blacklist);
         this.latex = new LatexProvider(this.files, this.blacklist);
+        this.snippets = new SnippetProvider(this.files, this.blacklist);
         this.fileScanner = new FileScannerProvider(this.files, this.blacklist);
         this.wordList = new WordListProvider(this.files, this.blacklist);
-        this.providers = [this.frontMatter, this.callout, this.latex, this.fileScanner, this.wordList];
+        this.providers = [this.frontMatter, this.callout, this.snippets, this.latex, this.fileScanner, this.wordList];
 
         this.popup = new SuggestionPopup(this.app, this);
         registerCommands(this);
@@ -85,6 +88,7 @@ export default class CompletrPlugin extends Plugin {
         await this.blacklist.load();
         const errors = await Promise.all([
             this.latex.load(migratedFrom === 1),
+            this.snippets.load(),
             this.callout.load(this.settings),
             this.wordList.load(this.settings).then(() => null),
             this.fileScanner.load(this.settings).then(() => null),

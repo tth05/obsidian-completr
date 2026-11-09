@@ -1,6 +1,7 @@
 import type { EditorState } from "@codemirror/state";
 import type { Editor, EditorPosition, TFile } from "obsidian";
 import type { CompletrSettings } from "../settings.ts";
+import type { SnippetSyntax } from "../snippets.ts";
 
 export interface Suggestion {
     /** The text shown in the popup. Also used for de-duplication, the blacklist and usage ranking. */
@@ -15,6 +16,8 @@ export interface Suggestion {
     /** Any CSS color, used for the icon. */
     color?: string;
     isSnippet?: boolean;
+    /** Placeholder syntax of a snippet, "latex" if not set. */
+    snippetSyntax?: SnippetSyntax;
     /** Insert a space after the replacement, unless there already is whitespace after the cursor. */
     appendSpace?: boolean;
     /** [start, end) ranges of {@link displayName} to highlight as matched. */

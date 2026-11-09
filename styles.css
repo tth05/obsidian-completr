@@ -36,6 +36,22 @@ body {
     text-overflow: ellipsis;
 }
 
+.completr-suggestion-preview {
+    margin-left: auto;
+    padding-left: 1em;
+    flex-shrink: 0;
+    max-height: 1.6em;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    color: var(--text-muted);
+    font-size: 0.8em;
+}
+
+.completr-suggestion-preview mjx-container {
+    margin: 0 !important;
+}
+
 /* Without focus, no item is selected: Enter goes to the editor until an item is selected with the arrow keys. */
 .completr-unfocused .suggestion-item.is-selected:not(:hover) {
     background-color: transparent;
@@ -78,7 +94,7 @@ span.completr-placeholder span {
     border-color: var(--text-error) !important;
 }
 
-.completr-latex-replacement {
+.completr-replacement-input {
     width: 100%;
     font-family: var(--font-monospace);
 }

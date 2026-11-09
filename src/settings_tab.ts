@@ -11,7 +11,9 @@ import {
 import { isInstalled as isCalloutManagerInstalled } from "obsidian-callout-manager";
 import { decodeText } from "./data_files.ts";
 import type CompletrPlugin from "./main.ts";
+import type { CustomEntry } from "./provider/custom_suggestions.ts";
 import { CUSTOM_LATEX_COMMANDS_FILE } from "./provider/latex_provider.ts";
+import { SNIPPETS_FILE } from "./provider/snippet_provider.ts";
 import { CalloutProviderSource, type CompletrSettings, IconMode, SortOrder, WordInsertionMode } from "./settings.ts";
 import { compileCharacterClass } from "./text.ts";
 
@@ -109,6 +111,7 @@ export default class CompletrSettingsTab extends PluginSettingTab {
         this.displayGeneral(containerEl);
         this.displayMatching(containerEl);
         this.displayLatex(containerEl);
+        this.displaySnippets(containerEl);
         this.displayFrontMatter(containerEl);
         this.displayFileScanner(containerEl);
         this.displayWordLists(containerEl);
@@ -280,6 +283,7 @@ export default class CompletrSettingsTab extends PluginSettingTab {
             "Also trigger after dollar signs inside code blocks or inline code, e.g. `$\\fr`.",
         );
         this.toggle(group, "latexIgnoreCase", "Ignore case", "'MaThbb' also suggests 'mathbb'.");
+        this.toggle(group, "latexPreview", "Preview", "Show what each command looks like next to it in the popup.");
         this.number(
             group,
             "latexMinWordTriggerLength",
@@ -288,57 +292,110 @@ export default class CompletrSettingsTab extends PluginSettingTab {
             1,
         );
 
-        const custom = new SettingGroup(containerEl)
-            .setHeading("Custom LaTeX commands")
+        const { latex } = this.plugin;
+        this.displayCustomEntries(containerEl, {
+            heading: "Custom LaTeX commands",
+            description:
+                "Your own suggestions inside math blocks. In the replacement, # marks a placeholder (jump with Enter) and ~ the final cursor position.",
+            addButton: "Add command",
+            modal: {
+                title: "Add LaTeX command",
+                namePlaceholder: "\\frac{#}{#}",
+                replacementPlaceholder: "\\frac{#}{#}",
+                nameRequired: false,
+            },
+            fileName: CUSTOM_LATEX_COMMANDS_FILE,
+            get: () => latex.getCustomCommands(),
+            set: (entries) => latex.setCustomCommands(entries),
+            reload: () => latex.load(false),
+        });
+    }
+
+    private displaySnippets(containerEl: HTMLElement) {
+        const { snippets } = this.plugin;
+        const group = new SettingGroup(containerEl).setHeading("Snippets");
+        this.toggle(
+            group,
+            "snippetsEnabled",
+            "Enabled",
+            "Suggest your own snippets outside of math blocks: type the start of a snippet's name to insert its text.",
+        );
+        this.displayCustomEntries(containerEl, {
+            description:
+                "In the text, {{}} marks a placeholder (jump with Enter), {{some text}} a placeholder with default text and {{cursor}} the final cursor position. Snippets may span multiple lines.",
+            addButton: "Add snippet",
+            modal: {
+                title: "Add snippet",
+                namePlaceholder: "meeting",
+                replacementPlaceholder: "## Meeting {{title}}\nAttendees: {{}}\n\n{{cursor}}",
+                nameRequired: true,
+            },
+            fileName: SNIPPETS_FILE,
+            get: () => snippets.snippets,
+            set: (entries) => snippets.setSnippets(entries),
+            reload: () => snippets.load(),
+        });
+    }
+
+    /** A list of user defined entries (custom LaTeX commands, snippets) stored in a JSON file. */
+    private displayCustomEntries(
+        containerEl: HTMLElement,
+        opts: {
+            heading?: string;
+            description: string;
+            addButton: string;
+            modal: CustomEntryModalOptions;
+            fileName: string;
+            get: () => readonly CustomEntry[];
+            set: (entries: CustomEntry[]) => Promise<void>;
+            reload: () => Promise<string | null>;
+        },
+    ) {
+        const group = new SettingGroup(containerEl);
+        if (opts.heading) group.setHeading(opts.heading);
+        group
             .addExtraButton((b) =>
                 b
                     .setIcon("folder-open")
-                    .setTooltip(`Open ${CUSTOM_LATEX_COMMANDS_FILE}`)
-                    .onClick(() => this.app.openWithDefaultApp(this.plugin.files.path(CUSTOM_LATEX_COMMANDS_FILE))),
+                    .setTooltip(`Open ${opts.fileName}`)
+                    .onClick(() => this.app.openWithDefaultApp(this.plugin.files.path(opts.fileName))),
             )
             .addExtraButton((b) =>
                 b
                     .setIcon("refresh-cw")
                     .setTooltip("Reload from file")
                     .onClick(async () => {
-                        const error = await this.plugin.latex.load(false);
-                        new Notice(error ?? `Loaded ${this.plugin.latex.getCustomCommands().length} custom commands`);
+                        const error = await opts.reload();
+                        new Notice(error ?? `Completr: Loaded ${opts.get().length} entries from ${opts.fileName}`);
                         this.display();
                     }),
             );
-        custom.addSetting((s) =>
-            s
-                .setDesc(
-                    "Your own suggestions inside math blocks. In the replacement, # marks a placeholder (jump with Enter) and ~ the final cursor position.",
-                )
-                .addButton((b) =>
-                    b
-                        .setButtonText("Add command")
-                        .setCta()
-                        .onClick(() =>
-                            new LatexCommandModal(this.app, async (displayName, replacement) => {
-                                await this.plugin.latex.setCustomCommands([
-                                    ...this.plugin.latex.getCustomCommands(),
-                                    { displayName, replacement },
-                                ]);
-                                this.display();
-                            }).open(),
-                        ),
-                ),
+        group.addSetting((s) =>
+            s.setDesc(opts.description).addButton((b) =>
+                b
+                    .setButtonText(opts.addButton)
+                    .setCta()
+                    .onClick(() =>
+                        new CustomEntryModal(this.app, opts.modal, async (displayName, replacement) => {
+                            await opts.set([...opts.get(), { displayName, replacement }]);
+                            this.display();
+                        }).open(),
+                    ),
+            ),
         );
-        const commands = this.plugin.latex.getCustomCommands();
-        commands.forEach((command, i) =>
-            custom.addSetting((s) => {
-                s.setName(command.displayName).addExtraButton((b) =>
+        const entries = opts.get();
+        entries.forEach((entry, i) =>
+            group.addSetting((s) => {
+                s.setName(entry.displayName).addExtraButton((b) =>
                     b
                         .setIcon("trash")
                         .setTooltip("Remove")
                         .onClick(async () => {
-                            await this.plugin.latex.setCustomCommands(commands.filter((_, j) => j !== i));
+                            await opts.set(entries.filter((_, j) => j !== i));
                             this.display();
                         }),
                 );
-                if (command.replacement !== command.displayName) s.setDesc(command.replacement);
+                if (entry.replacement !== entry.displayName) s.setDesc(entry.replacement);
             }),
         );
     }
@@ -585,24 +642,40 @@ class ConfirmationModal extends Modal {
     }
 }
 
-class LatexCommandModal extends Modal {
-    constructor(app: App, onSubmit: (displayName: string, replacement: string) => Promise<void>) {
+interface CustomEntryModalOptions {
+    title: string;
+    namePlaceholder: string;
+    replacementPlaceholder: string;
+    /** If false, the name defaults to the replacement. */
+    nameRequired: boolean;
+}
+
+class CustomEntryModal extends Modal {
+    constructor(
+        app: App,
+        opts: CustomEntryModalOptions,
+        onSubmit: (displayName: string, replacement: string) => Promise<void>,
+    ) {
         super(app);
-        this.setTitle("Add LaTeX command");
+        this.setTitle(opts.title);
         let displayName = "";
         let replacement = "";
+        new Setting(this.contentEl)
+            .setName("Name")
+            .setDesc(
+                opts.nameRequired
+                    ? "What you type to get this suggestion. Shown in the popup."
+                    : "Shown in the popup and used for matching. Defaults to the replacement.",
+            )
+            .addText((t) => t.setPlaceholder(opts.namePlaceholder).onChange((v) => (displayName = v)));
         new Setting(this.contentEl)
             .setName("Replacement")
             .setDesc("The inserted text. # marks a placeholder, ~ the final cursor position. May span multiple lines.")
             .addTextArea((t) => {
                 t.inputEl.rows = 4;
-                t.inputEl.addClass("completr-latex-replacement");
-                t.setPlaceholder("\\frac{#}{#}").onChange((v) => (replacement = v));
+                t.inputEl.addClass("completr-replacement-input");
+                t.setPlaceholder(opts.replacementPlaceholder).onChange((v) => (replacement = v));
             });
-        new Setting(this.contentEl)
-            .setName("Display name")
-            .setDesc("Shown in the popup and used for matching. Defaults to the replacement.")
-            .addText((t) => t.setPlaceholder("\\frac{#}{#}").onChange((v) => (displayName = v)));
         new Setting(this.contentEl).addButton((b) =>
             b
                 .setButtonText("Add")
@@ -612,7 +685,11 @@ class LatexCommandModal extends Modal {
                         new Notice("The replacement can't be empty.");
                         return;
                     }
-                    const name = (displayName || replacement).replace(/\n/g, " ");
+                    if (opts.nameRequired && !displayName.trim()) {
+                        new Notice("The name can't be empty.");
+                        return;
+                    }
+                    const name = (displayName.trim() || replacement).replace(/\n/g, " ");
                     await onSubmit(name, replacement);
                     this.close();
                 }),

@@ -147,8 +147,8 @@ export function registerCommands(plugin: CompletrPlugin) {
         },
     });
 
-    // See (1) above
-    const ids = new Set(commands.map((c) => `${plugin.manifest.id}:${c.id}`));
+    // See (1) above. Note: addCommand already prefixed the ids with the plugin id.
+    const ids = new Set(commands.map((c) => c.id));
     plugin.register(
         around(plugin.app.commands, {
             executeCommand(next) {

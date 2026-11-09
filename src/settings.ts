@@ -51,11 +51,15 @@ export interface CompletrSettings {
     iconMode: IconMode;
     rankByUsage: boolean;
 
+    snippetsEnabled: boolean;
+
     latexProviderEnabled: boolean;
     latexBuiltInCommands: boolean;
     latexTriggerInCodeBlocks: boolean;
     latexMinWordTriggerLength: number;
     latexIgnoreCase: boolean;
+    /** Render LaTeX suggestions next to their source in the popup. */
+    latexPreview: boolean;
 
     fileScannerProviderEnabled: boolean;
     fileScannerScanCurrent: boolean;
@@ -95,11 +99,14 @@ export const DEFAULT_SETTINGS: CompletrSettings = {
     iconMode: IconMode.SUGGESTION,
     rankByUsage: true,
 
+    snippetsEnabled: true,
+
     latexProviderEnabled: true,
     latexBuiltInCommands: true,
     latexTriggerInCodeBlocks: true,
     latexMinWordTriggerLength: 2,
     latexIgnoreCase: false,
+    latexPreview: true,
 
     fileScannerProviderEnabled: true,
     fileScannerScanCurrent: true,

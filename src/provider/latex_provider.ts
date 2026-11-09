@@ -2,15 +2,13 @@ import type { DataFiles } from "../data_files.ts";
 import { getLatexContext } from "../editor_context.ts";
 import type { CompletrSettings } from "../settings.ts";
 import type { SuggestionBlacklist } from "./blacklist.ts";
+import { type CustomEntry, CustomEntryFile, parseCustomEntries, serializeCustomEntries } from "./custom_suggestions.ts";
 import { DEFAULT_LATEX_COMMANDS, DEFAULT_LATEX_ENVIRONMENTS } from "./latex_commands.ts";
 import { type Suggestion, type SuggestionContext, type SuggestionProvider, suggestion } from "./provider.ts";
 
 export const CUSTOM_LATEX_COMMANDS_FILE = "latex_commands.json";
 
-export interface LatexCommand {
-    displayName: string;
-    replacement: string;
-}
+export type LatexCommand = CustomEntry;
 
 interface IndexedCommand {
     suggestion: Suggestion;
@@ -42,31 +40,9 @@ const CHANGED_V3_DEFAULTS = new Map(
 );
 
 /** Parses the contents of a commands file: an array of strings or {displayName, replacement} objects. */
-export function parseLatexCommands(json: string): LatexCommand[] {
-    const data: unknown = JSON.parse(json);
-    if (!Array.isArray(data)) throw new Error("The JSON root must be an array");
+export const parseLatexCommands: (json: string) => LatexCommand[] = parseCustomEntries;
 
-    return data.map((entry: unknown, i) => {
-        if (typeof entry === "string") return { displayName: entry, replacement: entry };
-        if (entry && typeof entry === "object") {
-            const { displayName, replacement } = entry as Partial<LatexCommand>;
-            if (typeof displayName === "string" && typeof replacement === "string") {
-                if (displayName.includes("\n"))
-                    throw new Error("Display name cannot contain a newline: " + displayName);
-                return { displayName, replacement };
-            }
-        }
-        throw new Error(`Invalid entry at index ${i}: ${JSON.stringify(entry)}`);
-    });
-}
-
-export function serializeLatexCommands(commands: LatexCommand[]): string {
-    return JSON.stringify(
-        commands.map((c) => (c.displayName === c.replacement ? c.displayName : c)),
-        null,
-        2,
-    );
-}
+export const serializeLatexCommands: (commands: readonly LatexCommand[]) => string = serializeCustomEntries;
 
 /**
  * Up to v3, the commands file contained all default commands. Splits such a file into the user's own commands and the
@@ -94,14 +70,16 @@ export class LatexProvider implements SuggestionProvider {
     readonly id = "latex";
     readonly icon = "sigma";
 
-    private customCommands: LatexCommand[] = [];
+    private readonly custom: CustomEntryFile;
     private builtInIndex: IndexedCommand[] = [];
     private customIndex: IndexedCommand[] = [];
 
     constructor(
         private readonly files: DataFiles,
         private readonly blacklist: SuggestionBlacklist,
-    ) {}
+    ) {
+        this.custom = new CustomEntryFile(files, CUSTOM_LATEX_COMMANDS_FILE);
+    }
 
     getSuggestions(context: SuggestionContext, settings: CompletrSettings): Suggestion[] {
         if (!settings.latexProviderEnabled) return [];
@@ -137,12 +115,11 @@ export class LatexProvider implements SuggestionProvider {
     }
 
     getCustomCommands(): readonly LatexCommand[] {
-        return this.customCommands;
+        return this.custom.entries;
     }
 
     async setCustomCommands(commands: LatexCommand[]) {
-        this.customCommands = commands;
-        await this.files.write(CUSTOM_LATEX_COMMANDS_FILE, serializeLatexCommands(commands));
+        await this.custom.set(commands);
         this.rebuildIndex();
     }
 
@@ -151,25 +128,14 @@ export class LatexProvider implements SuggestionProvider {
      * @param migrateFromV3 the file is from an older version and contains all default commands.
      */
     async load(migrateFromV3: boolean): Promise<string | null> {
-        let error: string | null = null;
-        const contents = await this.files.read(CUSTOM_LATEX_COMMANDS_FILE);
-        if (contents === null) {
-            this.customCommands = [];
-            await this.files.write(CUSTOM_LATEX_COMMANDS_FILE, "[]");
-        } else {
-            try {
-                this.customCommands = parseLatexCommands(contents);
-            } catch (e) {
-                this.customCommands = [];
-                error = `Failed to load ${CUSTOM_LATEX_COMMANDS_FILE}: ${(e as Error).message}`;
-            }
-
-            if (migrateFromV3 && !error) {
-                const { custom, removedDefaults } = migrateV3LatexCommands(this.customCommands);
-                await this.files.write(CUSTOM_LATEX_COMMANDS_FILE + ".v3.bak", contents);
-                await this.blacklist.addAll(removedDefaults);
-                await this.setCustomCommands(custom);
-            }
+        const hadFile = await this.files.exists(CUSTOM_LATEX_COMMANDS_FILE);
+        const error = await this.custom.load();
+        if (migrateFromV3 && hadFile && !error) {
+            const contents = (await this.files.read(CUSTOM_LATEX_COMMANDS_FILE)) ?? "[]";
+            const { custom, removedDefaults } = migrateV3LatexCommands([...this.custom.entries]);
+            await this.files.write(CUSTOM_LATEX_COMMANDS_FILE + ".v3.bak", contents);
+            await this.blacklist.addAll(removedDefaults);
+            await this.custom.set(custom);
         }
 
         this.rebuildIndex();
@@ -177,7 +143,7 @@ export class LatexProvider implements SuggestionProvider {
     }
 
     rebuildIndex() {
-        const index = (commands: LatexCommand[]) =>
+        const index = (commands: readonly LatexCommand[]) =>
             commands
                 .filter((c) => !this.blacklist.has(c.displayName))
                 .map((c): IndexedCommand => ({
@@ -186,6 +152,6 @@ export class LatexProvider implements SuggestionProvider {
                     nameLength: c.displayName.split("{", 1)[0].length,
                 }));
         this.builtInIndex = index(getBuiltInLatexCommands());
-        this.customIndex = index(this.customCommands);
+        this.customIndex = index([...this.custom.entries]);
     }
 }
