@@ -11,8 +11,12 @@ class Notice {
     }
 }
 
+/** Tests may change the flags. */
+const Platform = { isMacOS: false };
+
 void mock.module("obsidian", () => ({
     Notice,
+    Platform,
     /** Same semantics as Obsidian: front matter tags + inline tags, with a leading "#". */
     getAllTags(cache: { frontmatter?: { tags?: unknown }; tags?: { tag: string }[] }): string[] | null {
         const tags: string[] = [];

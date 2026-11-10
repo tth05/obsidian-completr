@@ -6,18 +6,20 @@ import {
     findFrontMatterBounds,
     getContinuationPrefix,
     isInUnclosedInlineMath,
+    isWordChar,
     LEGACY_CHARACTER_REGEX,
     matchWordBackwards,
     maybeLowerCase,
     removeDiacritics,
+    summarize,
 } from "../../src/text.ts";
 
 const defaultRegex = compileCharacterClass(DEFAULT_CHARACTER_REGEX)!;
-const isWordChar = (c: string) => defaultRegex.test(c);
+const isDefaultWordChar = (c: string) => defaultRegex.test(c);
 
 /** Matches the word in front of the end of `line`. */
 const wordAtEnd = (line: string, maxLookBack?: number) =>
-    matchWordBackwards(line, line.length, isWordChar, maxLookBack);
+    matchWordBackwards(line, line.length, isDefaultWordChar, maxLookBack);
 
 describe("compileCharacterClass", () => {
     test("compiles a simple class matching single characters", () => {
@@ -28,8 +30,11 @@ describe("compileCharacterClass", () => {
         expect(regex.flags).toBe("u");
     });
 
-    test("passes custom flags", () => {
-        expect(compileCharacterClass("a-z", "iu")!.test("Q")).toBe(true);
+    test("is not global, so repeated tests don't depend on each other", () => {
+        const regex = compileCharacterClass("a-z")!;
+        expect(regex.global).toBe(false);
+        expect(regex.test("a")).toBe(true);
+        expect(regex.test("a")).toBe(true);
     });
 
     test.each(["z-a", "\\p{NotAProperty}", "]", "\\"])("returns null for the invalid class %p", (input) => {
@@ -40,6 +45,100 @@ describe("compileCharacterClass", () => {
         const regex = compileCharacterClass(LEGACY_CHARACTER_REGEX)!;
         expect(regex.test("ß")).toBe(true);
         expect(regex.test("é")).toBe(false);
+    });
+});
+
+describe("isWordChar", () => {
+    test("tests a character against the character class", () => {
+        expect(isWordChar("q", "a-z")).toBe(true);
+        expect(isWordChar("Q", "a-z")).toBe(false);
+        expect(isWordChar("5", "a-z0-9")).toBe(true);
+        expect(isWordChar("-", "a-z0-9")).toBe(false);
+    });
+
+    test("the default class matches letters of every script, but no digits or punctuation", () => {
+        for (const c of ["a", "ß", "Ω", "ж", "字", "𠀀"]) expect(isWordChar(c, DEFAULT_CHARACTER_REGEX)).toBe(true);
+        for (const c of ["1", " ", "-", ":", "\\", "😀"]) expect(isWordChar(c, DEFAULT_CHARACTER_REGEX)).toBe(false);
+    });
+
+    test("an empty string is never a word character", () => {
+        expect(isWordChar("", DEFAULT_CHARACTER_REGEX)).toBe(false);
+        expect(isWordChar("", "a-z")).toBe(false);
+    });
+
+    test.each(["z-a", "\\p{NotAProperty}", "]", "\\"])("the invalid class %p falls back to the default", (cls) => {
+        expect(isWordChar("é", cls)).toBe(true);
+        expect(isWordChar("z", cls)).toBe(true);
+        expect(isWordChar("1", cls)).toBe(false);
+        expect(isWordChar("]", cls)).toBe(false);
+    });
+
+    test("switching between classes always uses the given one", () => {
+        expect(isWordChar("1", "0-9")).toBe(true);
+        expect(isWordChar("1", "a-z")).toBe(false);
+        expect(isWordChar("1", "0-9")).toBe(true);
+        expect(isWordChar("1", "z-a")).toBe(false);
+        expect(isWordChar("1", "0-9")).toBe(true);
+    });
+
+    test("repeated calls with the same class give the same answer", () => {
+        for (let i = 0; i < 3; i++) {
+            expect(isWordChar("a", "a-z")).toBe(true);
+            expect(isWordChar("A", "a-z")).toBe(false);
+        }
+    });
+
+    test("works as the predicate of matchWordBackwards", () => {
+        const line = "see my-note";
+        expect(matchWordBackwards(line, line.length, (c) => isWordChar(c, DEFAULT_CHARACTER_REGEX))).toEqual({
+            query: "note",
+            separatorChar: "-",
+        });
+        expect(matchWordBackwards(line, line.length, (c) => isWordChar(c, "a-z\\-"))).toEqual({
+            query: "my-note",
+            separatorChar: " ",
+        });
+    });
+});
+
+describe("summarize", () => {
+    test("a single line is returned as is", () => {
+        expect(summarize("Hello world")).toBe("Hello world");
+    });
+
+    test("only the first line by default, with an ellipsis if there is more", () => {
+        expect(summarize("## Meeting\nAttendees:")).toBe("## Meeting …");
+    });
+
+    test("lines are trimmed", () => {
+        expect(summarize("   indented\t")).toBe("indented");
+        expect(summarize("  a  \n  b  ", 2)).toBe("a ⏎ b");
+    });
+
+    test("empty and blank lines are skipped and don't count", () => {
+        expect(summarize("\n\n  \nfirst\n\nsecond\n")).toBe("first …");
+        expect(summarize("\n\nonly\n\n")).toBe("only");
+        expect(summarize("a\n\n\nb\n \nc", 2)).toBe("a ⏎ b …");
+    });
+
+    test("several lines are joined with a return symbol", () => {
+        expect(summarize("a\nb\nc", 2)).toBe("a ⏎ b …");
+        expect(summarize("a\nb\nc", 3)).toBe("a ⏎ b ⏎ c");
+        expect(summarize("a\nb\nc", 10)).toBe("a ⏎ b ⏎ c");
+    });
+
+    test("CRLF line breaks", () => {
+        expect(summarize("a\r\nb\r\n", 2)).toBe("a ⏎ b");
+        expect(summarize("a\r\nb")).toBe("a …");
+    });
+
+    test("empty or blank text", () => {
+        expect(summarize("")).toBe("");
+        expect(summarize(" \n\t\n")).toBe("");
+    });
+
+    test("placeholders are kept", () => {
+        expect(summarize("Dear {{name}},\n\n{{cursor}}")).toBe("Dear {{name}}, …");
     });
 });
 
@@ -54,11 +153,11 @@ describe("DEFAULT_CHARACTER_REGEX", () => {
         ["Arabic", "مرحبا"],
         ["combining diacritic", "é"],
     ])("matches %s", (_, chars) => {
-        for (const c of chars) expect(isWordChar(c)).toBe(true);
+        for (const c of chars) expect(isDefaultWordChar(c)).toBe(true);
     });
 
     test.each([" ", "1", "_", "-", ".", "$", "\\", "😀", "\t", "["])("does not match %p", (c) => {
-        expect(isWordChar(c)).toBe(false);
+        expect(isDefaultWordChar(c)).toBe(false);
     });
 
     test("whole Devanagari words are matched backwards (#87)", () => {
@@ -185,6 +284,12 @@ describe("removeDiacritics", () => {
         for (const word of ["किताब", "नमस्ते", "हिंदी", "पढ़ना", "ड़"]) {
             expect(removeDiacritics(word)).toBe(word.normalize("NFC"));
         }
+    });
+
+    test("removes exactly the combining diacritical marks block (U+0300 to U+036F)", () => {
+        expect(removeDiacritics("àbͯc")).toBe("abc");
+        // The characters right before and after the block
+        expect(removeDiacritics("a˿bͰc")).toBe("a˿bͰc");
     });
 
     test("output is NFC", () => {

@@ -8,7 +8,7 @@ import {
     SortOrder,
     WordInsertionMode,
 } from "../../src/settings.ts";
-import { DEFAULT_CHARACTER_REGEX, LEGACY_CHARACTER_REGEX } from "../../src/text.ts";
+import { compileCharacterClass, DEFAULT_CHARACTER_REGEX, LEGACY_CHARACTER_REGEX } from "../../src/text.ts";
 
 /** Settings as saved by v3.2.0 (no settingsVersion). */
 const V3_DATA = {
@@ -165,6 +165,52 @@ describe("loadSettings", () => {
         const { settings, migratedFrom } = loadSettings({ settingsVersion: 2, characterRegex: LEGACY_CHARACTER_REGEX });
         expect(migratedFrom).toBeNull();
         expect(settings.characterRegex).toBe(LEGACY_CHARACTER_REGEX);
+    });
+
+    describe("invalid character class", () => {
+        test.each(["z-a", "\\p{NotAProperty}", "]", "\\"])("%p is replaced with the default", (characterRegex) => {
+            const { settings, migratedFrom } = loadSettings({ settingsVersion: SETTINGS_VERSION, characterRegex });
+            expect(settings.characterRegex).toBe(DEFAULT_CHARACTER_REGEX);
+            // Repairing a value is not a migration
+            expect(migratedFrom).toBeNull();
+        });
+
+        test("the other settings are kept", () => {
+            const { settings } = loadSettings({
+                settingsVersion: SETTINGS_VERSION,
+                characterRegex: "z-a",
+                minWordLength: 5,
+                autoTrigger: false,
+            });
+            expect(settings).toEqual({ ...DEFAULT_SETTINGS, minWordLength: 5, autoTrigger: false });
+        });
+
+        test("also when migrating v1 data", () => {
+            const { settings, migratedFrom } = loadSettings({ ...V3_DATA, characterRegex: "a-z]" });
+            expect(migratedFrom).toBe(1);
+            expect(settings.characterRegex).toBe(DEFAULT_CHARACTER_REGEX);
+        });
+
+        test.each(["a-zA-Z0-9", "\\p{L}\\p{M}\\d_", "\\w\\-", LEGACY_CHARACTER_REGEX])(
+            "the valid class %p is kept",
+            (characterRegex) => {
+                const { settings } = loadSettings({ settingsVersion: SETTINGS_VERSION, characterRegex });
+                expect(settings.characterRegex).toBe(characterRegex);
+            },
+        );
+
+        test("the loaded class always compiles", () => {
+            for (const characterRegex of ["z-a", "a-z", "\\", "", 42, null]) {
+                const { settings } = loadSettings({ settingsVersion: SETTINGS_VERSION, characterRegex });
+                expect(compileCharacterClass(settings.characterRegex)).not.toBeNull();
+            }
+        });
+
+        // Guards against keeping "" which compiles to /[]/u and never finds a word.
+        test("an empty class, which matches nothing, is replaced with the default", () => {
+            const { settings } = loadSettings({ settingsVersion: SETTINGS_VERSION, characterRegex: "" });
+            expect(settings.characterRegex).toBe(DEFAULT_CHARACTER_REGEX);
+        });
     });
 
     test("data from a newer version is not migrated", () => {

@@ -41,12 +41,12 @@ export async function reloadWordLists(obsidian: Obsidian) {
     });
 }
 
+/** Removes words from the blacklist. They are suggested again right away, nothing has to be reloaded. */
 export async function unblacklist(obsidian: Obsidian, words: string[]) {
     await obsidian.eval(async (words: string[]) => {
         const plugin = app.plugins.plugins["obsidian-completr"]!;
         for (const w of words) await plugin.blacklist.remove(w);
     }, words);
-    await reloadWordLists(obsidian);
 }
 
 /** Opens the suite's note. `<|>` marks the cursor. */

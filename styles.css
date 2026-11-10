@@ -52,6 +52,60 @@ body {
     margin: 0 !important;
 }
 
+/* What a snippet inserts */
+.completr-suggestion-detail {
+    margin-left: auto;
+    padding-left: 1.5em;
+    max-width: 32ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-faint);
+    font-size: 0.8em;
+}
+
+/*
+ * Buttons of a suggestion. They always take up their space and only become visible when the suggestion is hovered, so
+ * the popup doesn't change its size and nothing is covered.
+ */
+.completr-suggestion-actions {
+    display: flex;
+    flex-shrink: 0;
+    justify-content: flex-end;
+    gap: 2px;
+    /* Room for two buttons in every row, so previews line up */
+    min-width: calc(2 * (var(--completr-suggestion-icon-size) + 4px) + 2px + 0.5em);
+    margin-left: auto;
+    padding-left: 0.5em;
+    visibility: hidden;
+}
+
+.completr-suggestion-detail ~ .completr-suggestion-actions,
+.completr-suggestion-preview ~ .completr-suggestion-actions {
+    margin-left: 0;
+}
+
+.suggestion-item:hover > .completr-suggestion-actions {
+    visibility: visible;
+}
+
+.completr-suggestion-action {
+    display: flex;
+    padding: 2px;
+    border-radius: var(--radius-s);
+    color: var(--text-faint);
+    cursor: var(--cursor);
+}
+
+.completr-suggestion-action:hover {
+    background-color: var(--background-modifier-active-hover);
+    color: var(--text-normal);
+}
+
+.completr-suggestion-action svg {
+    width: var(--completr-suggestion-icon-size);
+    height: var(--completr-suggestion-icon-size);
+}
+
 /* Without focus, no item is selected: Enter goes to the editor until an item is selected with the arrow keys. */
 .completr-unfocused .suggestion-item.is-selected:not(:hover) {
     background-color: transparent;
@@ -80,13 +134,27 @@ span.completr-placeholder span {
     opacity: 0.8;
 }
 
-.completr-placeholder-0 { --completr-placeholder-color: var(--completr-placeholder-0); }
-.completr-placeholder-1 { --completr-placeholder-color: var(--completr-placeholder-1); }
-.completr-placeholder-2 { --completr-placeholder-color: var(--completr-placeholder-2); }
-.completr-placeholder-3 { --completr-placeholder-color: var(--completr-placeholder-3); }
-.completr-placeholder-4 { --completr-placeholder-color: var(--completr-placeholder-4); }
-.completr-placeholder-5 { --completr-placeholder-color: var(--completr-placeholder-5); }
-.completr-placeholder-6 { --completr-placeholder-color: var(--completr-placeholder-6); }
+.completr-placeholder-0 {
+    --completr-placeholder-color: var(--completr-placeholder-0);
+}
+.completr-placeholder-1 {
+    --completr-placeholder-color: var(--completr-placeholder-1);
+}
+.completr-placeholder-2 {
+    --completr-placeholder-color: var(--completr-placeholder-2);
+}
+.completr-placeholder-3 {
+    --completr-placeholder-color: var(--completr-placeholder-3);
+}
+.completr-placeholder-4 {
+    --completr-placeholder-color: var(--completr-placeholder-4);
+}
+.completr-placeholder-5 {
+    --completr-placeholder-color: var(--completr-placeholder-5);
+}
+.completr-placeholder-6 {
+    --completr-placeholder-color: var(--completr-placeholder-6);
+}
 
 /* ---- Settings ---- */
 
@@ -134,11 +202,14 @@ span.completr-placeholder span {
     word-break: break-all;
 }
 
-/* Long multi-line replacements only show their start */
+/* Replacements are summarized in one line */
+.completr-list-item .setting-item-info {
+    min-width: 0;
+}
+
 .completr-list-item .setting-item-description {
     font-family: var(--font-monospace);
-    white-space: pre;
-    max-height: 3lh;
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }

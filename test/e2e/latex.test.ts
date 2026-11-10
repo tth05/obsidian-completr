@@ -1,5 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { getBuiltInLatexCommands, type LatexCommand } from "../../src/provider/latex_provider.ts";
+import { join } from "node:path";
+import type { CustomEntry } from "../../src/provider/custom_suggestions.ts";
+import { getBuiltInLatexCommands } from "../../src/provider/latex_provider.ts";
 import { getObsidian, type Obsidian } from "./harness/obsidian.ts";
 import {
     expectLatexSuggestions,
@@ -171,7 +173,7 @@ describe("insertion", () => {
 
 describe("custom commands", () => {
     afterEach(async () => {
-        await obsidian.eval(() => app.plugins.plugins["obsidian-completr"]!.latex.setCustomCommands([]));
+        await obsidian.eval(() => app.plugins.plugins["obsidian-completr"]!.latex.customEntries.set([]));
     });
 
     test("are loaded from latex_commands.json and rank among the built-in ones", async () => {
@@ -221,19 +223,19 @@ describe("custom commands", () => {
         await expectLatexSuggestions(obsidian, "$<|>$");
 
         // Saving new commands backs up the broken file first
-        await obsidian.eval(() => app.plugins.plugins["obsidian-completr"]!.latex.setCustomCommands([]));
+        await obsidian.eval(() => app.plugins.plugins["obsidian-completr"]!.latex.customEntries.set([]));
         const backup = `${COMMANDS_FILE}.broken.bak`;
         expect(await obsidian.readVaultFile(backup)).toBe('["\\\\broken{#}",');
         await obsidian.eval((p: string) => app.vault.adapter.remove(p), backup);
     });
 
     test("are saved to latex_commands.json when changed through the API", async () => {
-        const commands: LatexCommand[] = [
+        const commands: CustomEntry[] = [
             { displayName: "\\apicmd", replacement: "\\apicmd" },
             { displayName: "\\apifrac", replacement: "\\frac{#}{#}" },
         ];
         await obsidian.eval(
-            (commands: LatexCommand[]) => app.plugins.plugins["obsidian-completr"]!.latex.setCustomCommands(commands),
+            (commands: CustomEntry[]) => app.plugins.plugins["obsidian-completr"]!.latex.customEntries.set(commands),
             commands,
         );
 
@@ -248,18 +250,71 @@ describe("custom commands", () => {
     });
 });
 
-test("v3 settings and latex_commands.json are migrated", async () => {
-    const DATA_FILE = `${PLUGIN_PATH}/data.json`;
-    const BLACKLIST_FILE = `${PLUGIN_PATH}/blacklisted_suggestions.txt`;
-    const BACKUP_FILE = `${COMMANDS_FILE}.v3.bak`;
-    const originals = await Promise.all(
-        [DATA_FILE, BLACKLIST_FILE, COMMANDS_FILE].map((f) => obsidian.readVaultFile(f)),
-    );
+const DATA_FILE = `${PLUGIN_PATH}/data.json`;
+const BLACKLIST_FILE = `${PLUGIN_PATH}/blacklisted_suggestions.txt`;
+const BACKUP_FILE = `${COMMANDS_FILE}.v3.bak`;
 
+/** Runs `fn` and afterwards restores data.json, the blacklist and the commands file, and reloads the plugin. */
+async function restoringPluginFiles(fn: () => Promise<void>) {
+    const files = [DATA_FILE, BLACKLIST_FILE, COMMANDS_FILE];
+    const originals = await Promise.all(files.map((f) => obsidian.readVaultFile(f)));
+    try {
+        await fn();
+    } finally {
+        for (let i = 0; i < files.length; i++) {
+            const original = originals[i];
+            if (original !== null && original !== undefined) await obsidian.writeVaultFile(files[i], original);
+            else
+                await obsidian.eval(async (p: string) => {
+                    if (await app.vault.adapter.exists(p)) await app.vault.adapter.remove(p);
+                }, files[i]);
+        }
+        await obsidian.eval(async (p: string) => {
+            if (await app.vault.adapter.exists(p)) await app.vault.adapter.remove(p);
+        }, BACKUP_FILE);
+        await obsidian.reloadPlugin();
+    }
+}
+
+test("a v3 latex_commands.json is migrated without a data.json, too", async () => {
+    // The file v3.2.0 wrote, i.e. all of its default commands
+    const fixture = await Bun.file(join(import.meta.dir, "../unit/fixtures/latex_commands_v3.json")).text();
+    const deleted = "\\veebar";
+    const custom = { displayName: "\\myowncmd", replacement: "\\myowncmd{#}" };
+    const v3Commands = [...(JSON.parse(fixture) as CustomEntry[]).filter((c) => c.displayName !== deleted), custom];
+    const v3File = JSON.stringify(v3Commands, null, 4);
+
+    await restoringPluginFiles(async () => {
+        await obsidian.eval(async (p: string) => {
+            if (await app.vault.adapter.exists(p)) await app.vault.adapter.remove(p);
+        }, DATA_FILE);
+        await obsidian.writeVaultFile(COMMANDS_FILE, v3File);
+        await obsidian.reloadPlugin();
+
+        expect(JSON.parse((await obsidian.readVaultFile(COMMANDS_FILE))!)).toEqual([custom]);
+        expect(await obsidian.readVaultFile(BACKUP_FILE)).toBe(v3File);
+        const state = await obsidian.eval(() => {
+            const plugin = app.plugins.plugins["obsidian-completr"]!;
+            return { blacklist: plugin.blacklist.values(), custom: plugin.latex.customEntries.entries.slice() };
+        });
+        expect(state.blacklist).toContain(deleted);
+        expect(state.blacklist).not.toContain("\\vee");
+        expect(state.custom).toEqual([custom]);
+
+        // The built-in commands are suggested once, the user's own as well
+        await openFreshNote(obsidian, "$<|>$");
+        await obsidian.type("\\mathbb");
+        const popup = await obsidian.waitForPopup((p) => p.items.includes("\\mathbb{#}"));
+        expect(popup.items.filter((i) => i === "\\mathbb{#}")).toHaveLength(1);
+        expect(await complete("$<|>$", "\\myow", "\\myowncmd")).toBe("$\\myowncmd{<|>}$");
+    });
+});
+
+test("v3 settings and latex_commands.json are migrated", async () => {
     // v3 shipped all default commands in the file, with "\sum^{#}_{#}" instead of "\sum_{#}^{#}" (#76)
     const deleted = "\\veebar";
     const custom = { displayName: "\\mycustom", replacement: "\\mycustom{#}" };
-    const v3Commands: (string | LatexCommand)[] = getBuiltInLatexCommands()
+    const v3Commands: (string | CustomEntry)[] = getBuiltInLatexCommands()
         .filter((c) => c.displayName !== deleted)
         .map((c) => {
             const name = c.displayName.replace(/^\\(sum|int|prod)_\{#\}\^\{#\}$/, "\\$1^{#}_{#}");
@@ -268,7 +323,7 @@ test("v3 settings and latex_commands.json are migrated", async () => {
     v3Commands.splice(10, 0, custom);
     const v3File = JSON.stringify(v3Commands, null, 2);
 
-    try {
+    await restoringPluginFiles(async () => {
         await obsidian.writeVaultFile(DATA_FILE, JSON.stringify({ characterRegex: "a-zA-ZöäüÖÄÜß" }));
         await obsidian.writeVaultFile(COMMANDS_FILE, v3File);
         await obsidian.reloadPlugin();
@@ -295,27 +350,16 @@ test("v3 settings and latex_commands.json are migrated", async () => {
         // The migrated commands work
         await openFreshNote(obsidian, "$<|>$");
         await obsidian.type("\\vee");
-        let popup = await obsidian.waitForPopup((p) => p.items.includes("\\vee"));
+        const popup = await obsidian.waitForPopup((p) => p.items.includes("\\vee"));
         expect(popup.items).not.toContain(deleted);
         await openFreshNote(obsidian, "$<|>$");
         await obsidian.type("\\myc");
-        popup = await obsidian.waitForPopup((p) => p.items.includes("\\mycustom"));
+        await obsidian.waitForPopup((p) => p.items.includes("\\mycustom"));
 
         // A second load doesn't migrate again
         await obsidian.reloadPlugin();
         expect(JSON.parse((await obsidian.readVaultFile(COMMANDS_FILE))!)).toEqual([custom]);
-    } finally {
-        const files = [DATA_FILE, BLACKLIST_FILE, COMMANDS_FILE];
-        for (let i = 0; i < files.length; i++) {
-            const original = originals[i];
-            if (original !== null && original !== undefined) await obsidian.writeVaultFile(files[i], original);
-            else await obsidian.eval((p: string) => app.vault.adapter.remove(p), files[i]);
-        }
-        await obsidian.eval(async (p: string) => {
-            if (await app.vault.adapter.exists(p)) await app.vault.adapter.remove(p);
-        }, BACKUP_FILE);
-        await obsidian.reloadPlugin();
-    }
+    });
 });
 
 describe("previews in the popup", () => {
@@ -358,6 +402,46 @@ describe("previews in the popup", () => {
         const environments = (await previews()).filter((i) => i.text.startsWith("\\begin{"));
         expect(environments.length).toBeGreaterThan(0);
         expect(environments.filter((i) => i.rendered)).toEqual([]);
+    });
+
+    test("custom commands preview their replacement, commands MathJax doesn't know have none", async () => {
+        const commands: CustomEntry[] = [
+            { displayName: "\\zzfrac", replacement: "\\frac{#}{#}" },
+            { displayName: "\\zzalpha", replacement: "\\alpha" },
+            { displayName: "\\zzunknown", replacement: "\\zzunknown{#}" },
+        ];
+        await obsidian.eval(
+            (commands: CustomEntry[]) => app.plugins.plugins["obsidian-completr"]!.latex.customEntries.set(commands),
+            commands,
+        );
+        try {
+            await openFreshNote(obsidian, "$<|>$");
+            await obsidian.type("\\zz");
+            await obsidian.waitForPopup((p) => commands.every((c) => p.items.includes(c.displayName)));
+            await waitForPreview("\\zzalpha");
+            await waitForPreview("\\zzfrac");
+            // The replacement is rendered, not the name
+            const frac = await obsidian.eval(
+                () =>
+                    !!Array.from(document.querySelectorAll(".completr-suggestion-item"))
+                        .find((i) => i.querySelector(".completr-suggestion-text")?.textContent === "\\zzfrac")
+                        ?.querySelector(".completr-suggestion-preview mjx-mfrac"),
+            );
+            expect(frac).toBe(true);
+            // All three are rendered in the same batch, so the unknown one is done by now: no red error text
+            const unknown = (await previews()).find((i) => i.text === "\\zzunknown");
+            expect(unknown?.rendered).toBe(false);
+            expect(
+                await obsidian.eval(
+                    () =>
+                        Array.from(document.querySelectorAll(".completr-suggestion-item"))
+                            .find((i) => i.querySelector(".completr-suggestion-text")?.textContent === "\\zzunknown")!
+                            .querySelector(".completr-suggestion-preview")?.textContent ?? "",
+                ),
+            ).toBe("");
+        } finally {
+            await obsidian.eval(() => app.plugins.plugins["obsidian-completr"]!.latex.customEntries.set([]));
+        }
     });
 
     test("latexPreview=false disables them", async () => {

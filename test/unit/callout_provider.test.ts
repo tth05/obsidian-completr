@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import type { Editor, Plugin } from "obsidian";
-import { SuggestionBlacklist } from "../../src/provider/blacklist.ts";
 import {
     CALLOUT_SUGGESTIONS_FILE,
     CalloutProvider,
@@ -125,12 +124,10 @@ describe("defaultCallouts", () => {
 });
 
 describe("CalloutProvider", () => {
-    async function setup(contents?: string, blacklisted: string[] = []) {
+    async function setup(contents?: string) {
         const { files, adapter } = makeDataFiles();
         if (contents !== undefined) adapter.files.set(FILE, contents);
-        const blacklist = new SuggestionBlacklist(files);
-        await blacklist.addAll(blacklisted);
-        const provider = new CalloutProvider({} as Plugin, files, blacklist);
+        const provider = new CalloutProvider({} as Plugin, files);
         const error = await provider.load(makeSettings());
         return { provider, adapter, error };
     }
@@ -206,9 +203,35 @@ describe("CalloutProvider", () => {
         expect(suggest(provider, ["> [!note] ti|"])).toEqual([]);
     });
 
-    test("blacklisted callouts are hidden", async () => {
-        const { provider } = await setup(undefined, ["Note"]);
-        expect(suggest(provider, ["> [!no|"])).toEqual([]);
+    test("suggestions are copies, changing them does not change later results", async () => {
+        const { provider } = await setup();
+        const [first] = suggest(provider, ["> [!no|"]);
+        first.displayName = "changed";
+        first.provider = provider;
+        expect(suggest(provider, ["> [!no|"])).toEqual([
+            {
+                displayName: "Note",
+                replacement: "[!note] ",
+                icon: "lucide-pencil",
+                color: "#448aff",
+                overrideStart: { line: 0, ch: 2 },
+                overrideEnd: { line: 0, ch: 6 },
+            },
+        ]);
+    });
+
+    test("does not ask the context for code or math", async () => {
+        const { provider } = await setup();
+        const doc = ["> [!no"];
+        const context = makeContext("", {
+            editor: { getLine: (i: number) => doc[i] } as Editor,
+            line: doc[0],
+            end: { line: 0, ch: 6 },
+            mathType: () => {
+                throw new Error("must not be called");
+            },
+        });
+        expect(provider.getSuggestions(context, makeSettings())).toHaveLength(1);
     });
 
     test("disabled provider", async () => {

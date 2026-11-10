@@ -22,6 +22,9 @@ export interface WordMatch {
     matches: [number, number][];
 }
 
+/** Up to this many words are inserted into the sorted views one by one, more than that and re-sorting is cheaper. */
+const INCREMENTAL_LIMIT = 256;
+
 /** Separates the normalized key from the original word inside an entry. Sorts before every other character. */
 const SEPARATOR = "\u0000";
 
@@ -139,6 +142,29 @@ export class WordIndex {
             view.entries.splice(lowerBound(view.entries, entry), 0, entry);
         }
         return true;
+    }
+
+    /**
+     * Adds many words, returns how many were not already known. Big batches drop the sorted views instead of inserting
+     * into them word by word; they are rebuilt on the next search.
+     */
+    addAll(words: Iterable<string>): number {
+        const added: string[] = [];
+        for (const word of words) {
+            if (!word || this.words.has(word)) continue;
+            this.words.add(word);
+            added.push(word);
+        }
+
+        if (added.length > INCREMENTAL_LIMIT) this.views.clear();
+        else
+            for (const view of this.views.values()) {
+                for (const word of added) {
+                    const entry = toEntry(word, view.opts);
+                    view.entries.splice(lowerBound(view.entries, entry), 0, entry);
+                }
+            }
+        return added.length;
     }
 
     /** Replaces all words. Much faster than adding them one by one. */

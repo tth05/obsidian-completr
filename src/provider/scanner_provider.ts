@@ -1,7 +1,8 @@
-import { type DataFiles, splitLines } from "../data_files.ts";
+import type { TFile, Vault } from "obsidian";
+import { type DataFiles, DebouncedSaver, splitLines } from "../data_files.ts";
 import type { CompletrSettings } from "../settings.ts";
+import { DEFAULT_CHARACTER_REGEX } from "../text.ts";
 import { WordIndex } from "../word_index.ts";
-import type { SuggestionBlacklist } from "./blacklist.ts";
 import { DictionaryProvider, getNormalization } from "./dictionary_provider.ts";
 
 const SCANNED_WORDS_FILE = "scanned_words.txt";
@@ -26,7 +27,7 @@ function getScanRegex(characterRegex: string): RegExp {
         try {
             regex = new RegExp(`${skip}|(?<word>[${characterRegex}]+)`, "gu");
         } catch {
-            regex = new RegExp(`${skip}|(?<word>[\\p{L}\\p{M}]+)`, "gu");
+            regex = new RegExp(`${skip}|(?<word>[${DEFAULT_CHARACTER_REGEX}]+)`, "gu");
         }
         regexCache.set(characterRegex, regex);
     }
@@ -57,14 +58,14 @@ export class FileScannerProvider extends DictionaryProvider {
     private readonly index = new WordIndex();
     /** The words of the note that is currently being edited. */
     private readonly currentFileIndex = new WordIndex();
-    private saveTimer: number | null = null;
-    private dirty = false;
+    private readonly saver: DebouncedSaver;
 
-    constructor(
-        private readonly files: DataFiles,
-        private readonly blacklist: SuggestionBlacklist,
-    ) {
+    constructor(private readonly files: DataFiles) {
         super();
+        this.saver = new DebouncedSaver(
+            () => files.write(SCANNED_WORDS_FILE, Array.from(this.index.values()).join("\n")),
+            SAVE_DELAY_MS,
+        );
     }
 
     get wordCount(): number {
@@ -75,17 +76,28 @@ export class FileScannerProvider extends DictionaryProvider {
         return settings.fileScannerProviderEnabled;
     }
 
-    protected getIndex(_: unknown, settings: CompletrSettings): WordIndex {
+    protected getIndex(settings: CompletrSettings): WordIndex {
         return settings.fileScannerCurrentFileOnly ? this.currentFileIndex : this.index;
     }
 
     /** Adds the words of a note to the known words. */
     addText(text: string, settings: CompletrSettings) {
-        let changed = false;
-        for (const word of scanWords(text, settings)) {
-            if (!this.blacklist.has(word) && this.index.add(word)) changed = true;
+        if (this.index.addAll(scanWords(text, settings)) > 0) this.saver.schedule();
+    }
+
+    /** Learns the words of the given notes. Returns how many notes could be read. */
+    async scanFiles(vault: Vault, files: TFile[], settings: CompletrSettings): Promise<number> {
+        let scanned = 0;
+        for (const file of files) {
+            try {
+                this.addText(await vault.cachedRead(file), settings);
+                scanned++;
+            } catch (e) {
+                console.warn("Completr: Unable to scan " + file.path, e);
+            }
         }
-        if (changed) this.scheduleSave();
+        await this.flush();
+        return scanned;
     }
 
     /**
@@ -93,51 +105,28 @@ export class FileScannerProvider extends DictionaryProvider {
      * should be used.
      */
     setCurrentFileText(text: string, settings: CompletrSettings, cursorOffset = -1) {
-        const words = scanWords(text, settings, cursorOffset).filter((w) => !this.blacklist.has(w));
+        if (!settings.fileScannerProviderEnabled) return;
+        const words = scanWords(text, settings, cursorOffset);
         this.currentFileIndex.setAll(words);
-        if (!settings.fileScannerScanCurrent) return;
-
-        let changed = false;
-        for (const word of words) if (this.index.add(word)) changed = true;
-        if (changed) this.scheduleSave();
-    }
-
-    removeWord(word: string) {
-        this.currentFileIndex.delete(word);
-        if (this.index.delete(word)) this.scheduleSave();
+        if (settings.fileScannerScanCurrent && this.index.addAll(words) > 0) this.saver.schedule();
     }
 
     async deleteAllWords() {
         this.index.clear();
         this.currentFileIndex.clear();
-        this.dirty = true;
+        this.saver.schedule();
         await this.flush();
     }
 
     async load(settings: CompletrSettings) {
         const contents = await this.files.read(SCANNED_WORDS_FILE);
         if (contents === null) return;
-        this.index.setAll(splitLines(contents).filter((w) => w && !this.blacklist.has(w)));
+        this.index.setAll(splitLines(contents));
         this.index.prepare(getNormalization(settings));
     }
 
-    private scheduleSave() {
-        this.dirty = true;
-        if (this.saveTimer !== null) return;
-        this.saveTimer = window.setTimeout(() => {
-            this.saveTimer = null;
-            void this.flush();
-        }, SAVE_DELAY_MS);
-    }
-
     /** Writes pending changes to disk. */
-    async flush() {
-        if (this.saveTimer !== null) {
-            window.clearTimeout(this.saveTimer);
-            this.saveTimer = null;
-        }
-        if (!this.dirty) return;
-        this.dirty = false;
-        await this.files.write(SCANNED_WORDS_FILE, Array.from(this.index.values()).join("\n"));
+    flush(): Promise<void> {
+        return this.saver.flush();
     }
 }

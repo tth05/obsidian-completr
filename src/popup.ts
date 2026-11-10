@@ -7,17 +7,22 @@ import {
     EditorSuggest,
     type EditorSuggestContext,
     type EditorSuggestTriggerInfo,
+    Notice,
     renderMatches,
     setIcon,
+    setTooltip,
     type TFile,
 } from "obsidian";
-import { getCursorContext } from "./editor_context.ts";
+import { type CursorContext, getCursorContext, getLatexContext, type MathType } from "./editor_context.ts";
+import { guarded } from "./errors.ts";
+import { BLACKLIST_COMMAND, getHotkeyLabel } from "./hotkeys.ts";
 import { renderLatexPreview } from "./latex_preview.ts";
 import type CompletrPlugin from "./main.ts";
+import { CustomEntryModal } from "./modals.ts";
 import type { Suggestion, SuggestionContext } from "./provider/provider.ts";
 import { IconMode } from "./settings.ts";
 import { insertSnippet } from "./snippets.ts";
-import { compileCharacterClass, DEFAULT_CHARACTER_REGEX, matchWordBackwards } from "./text.ts";
+import { isWordChar, matchWordBackwards } from "./text.ts";
 
 export enum SelectionDirection {
     NEXT = 1,
@@ -31,7 +36,7 @@ const MAX_SUGGESTIONS = 100;
  * without a user event that add exactly one character in front of the cursor. That's how plugins that handle typing
  * themselves insert it (e.g. LaTeX Suite replaces "\a" with "\al" when "l" is typed).
  */
-export function isTyping(tr: Transaction): boolean {
+function isTyping(tr: Transaction): boolean {
     if (tr.isUserEvent("input.type")) return true;
     if (tr.annotation(Transaction.userEvent) !== undefined || !tr.docChanged) return false;
 
@@ -64,12 +69,15 @@ function isNoop(tr: Transaction): boolean {
 export class SuggestionPopup extends EditorSuggest<Suggestion> {
     /** Whether an item is selected, i.e. Enter inserts it. Without focus, keys go to the editor. */
     private focused = false;
-    /** Set while the popup is opened through the "open suggestion popup" command. */
-    private manualTrigger = false;
+    /**
+     * Whether the popup was opened with the "open suggestion popup" command, so the minimum length settings are ignored.
+     * Ends when the popup closes, or when the query is empty after the user changed the document (the word is finished).
+     */
+    private manual = false;
+    private changedSinceManualTrigger = false;
     /** Whether the last change of the focused editor was the user typing a character. */
     private lastChangeWasTyping = false;
     private separatorChar: string | null = null;
-    private wordCharRegex: { source: string; regex: RegExp } | null = null;
 
     constructor(
         app: App,
@@ -95,6 +103,7 @@ export class SuggestionPopup extends EditorSuggest<Suggestion> {
     override close() {
         super.close();
         this.focused = false;
+        this.manual = false;
     }
 
     private setFocused(focused: boolean) {
@@ -112,7 +121,10 @@ export class SuggestionPopup extends EditorSuggest<Suggestion> {
         if (update.docChanged) {
             // Indenting, pasting, deleting, ... should not open the popup, only typing does.
             const changes = update.transactions.filter((tr) => tr.docChanged && !isNoop(tr));
-            if (changes.length > 0) this.lastChangeWasTyping = changes.some(isTyping);
+            if (changes.length > 0) {
+                this.lastChangeWasTyping = changes.some(isTyping);
+                this.changedSinceManualTrigger = true;
+            }
         } else if (update.selectionSet) {
             this.lastChangeWasTyping = false;
             if (this.isOpen) this.close();
@@ -121,69 +133,74 @@ export class SuggestionPopup extends EditorSuggest<Suggestion> {
 
     /** Opens the popup for the word in front of the cursor, ignoring the auto trigger and minimum length settings. */
     triggerManually(editor: Editor, file: TFile | null) {
-        this.manualTrigger = true;
-        try {
-            this.trigger(editor, file, true);
-        } finally {
-            this.manualTrigger = false;
-        }
+        this.manual = true;
+        this.changedSinceManualTrigger = false;
+        this.trigger(editor, file, true);
+        // Nothing to suggest: Obsidian only calls close() if the popup was open
+        if (!this.isOpen) this.manual = false;
     }
 
     /** Re-computes the suggestions, e.g. after one was blacklisted. */
     refresh() {
         const ctx = this.context;
-        if (!ctx) return;
-        this.triggerManually(ctx.editor, ctx.file);
-    }
-
-    private isWordChar(char: string): boolean {
-        const source = this.settings.characterRegex;
-        if (this.wordCharRegex?.source !== source) {
-            const regex = compileCharacterClass(source) ?? compileCharacterClass(DEFAULT_CHARACTER_REGEX)!;
-            this.wordCharRegex = { source, regex };
-        }
-        return this.wordCharRegex.regex.test(char);
+        if (ctx && this.isOpen) this.trigger(ctx.editor, ctx.file, true);
     }
 
     onTrigger(cursor: EditorPosition, editor: Editor): EditorSuggestTriggerInfo | null {
-        if (!this.manualTrigger && !this.isOpen && !(this.settings.autoTrigger && this.lastChangeWasTyping))
-            return null;
+        if (!this.manual && !this.isOpen && !(this.settings.autoTrigger && this.lastChangeWasTyping)) return null;
 
         const line = editor.getLine(cursor.line);
         const { query, separatorChar } = matchWordBackwards(
             line,
             cursor.ch,
-            (c) => this.isWordChar(c),
+            (c) => isWordChar(c, this.settings.characterRegex),
             this.settings.maxLookBackDistance,
         );
         this.separatorChar = separatorChar;
+        // The word the popup was opened on is finished, from now on the automatic rules apply
+        if (query.length === 0 && this.changedSinceManualTrigger) this.manual = false;
         return { start: { line: cursor.line, ch: cursor.ch - query.length }, end: cursor, query };
     }
 
-    getSuggestions(context: EditorSuggestContext): Suggestion[] {
+    private createContext(context: EditorSuggestContext): SuggestionContext {
         const { editor } = context;
         const state = editor.cm.state;
-        let inCode: boolean | undefined;
-        const ctx: SuggestionContext = {
+        const offset = editor.posToOffset(context.end);
+        // Looking at the syntax tree is the expensive part, and several providers ask the same questions
+        let cursor: CursorContext | undefined;
+        const getCursor = () => (cursor ??= getCursorContext(state, offset));
+        const mathTypes = new Map<boolean, MathType | null>();
+
+        return {
             editor,
             state,
-            file: context.file,
-            start: context.start,
             end: context.end,
             query: context.query,
             separatorChar: this.separatorChar,
             line: editor.getLine(context.end.line),
-            manual: this.manualTrigger,
+            manual: this.manual,
             get inCode() {
-                return (inCode ??= getCursorContext(state, editor.posToOffset(context.end)).inCode);
+                return getCursor().inCode;
+            },
+            mathType(triggerInCode) {
+                let type = mathTypes.get(triggerInCode);
+                if (type === undefined) {
+                    type = getLatexContext(state, offset, triggerInCode, getCursor());
+                    mathTypes.set(triggerInCode, type);
+                }
+                return type;
             },
         };
+    }
+
+    getSuggestions(context: EditorSuggestContext): Suggestion[] {
+        const ctx = this.createContext(context);
 
         let suggestions: Suggestion[] = [];
         for (const provider of this.plugin.providers) {
             const result = provider.getSuggestions(ctx, this.settings);
             if (result.length === 0) continue;
-            for (const s of result) s.providerId = provider.id;
+            for (const s of result) s.provider = provider;
 
             if (provider.blocksAllOtherProviders) {
                 suggestions = result;
@@ -195,6 +212,7 @@ export class SuggestionPopup extends EditorSuggest<Suggestion> {
             suggestions.push(...result);
         }
 
+        // The one place where the blacklist is applied
         const seen = new Set<string>();
         const { blacklist, usage } = this.plugin;
         suggestions = suggestions.filter((s) => {
@@ -203,13 +221,14 @@ export class SuggestionPopup extends EditorSuggest<Suggestion> {
             return true;
         });
 
-        if (this.settings.rankByUsage) {
-            // Stable sort: frequently used first, but never above better (non-fuzzy) matches
-            suggestions.sort(
-                (a, b) =>
-                    Number(!!a.isFuzzy) - Number(!!b.isFuzzy) || usage.get(b.displayName) - usage.get(a.displayName),
-            );
-        }
+        // Stable sort: the providers' order is kept, except that fuzzy matches of one provider never come before the
+        // better matches of another, and (optionally) that frequently used suggestions come first within those groups.
+        const byUsage = this.settings.rankByUsage;
+        suggestions.sort(
+            (a, b) =>
+                Number(!!a.isFuzzy) - Number(!!b.isFuzzy) ||
+                (byUsage ? usage.get(b.displayName) - usage.get(a.displayName) : 0),
+        );
 
         return suggestions.slice(0, MAX_SUGGESTIONS);
     }
@@ -222,19 +241,66 @@ export class SuggestionPopup extends EditorSuggest<Suggestion> {
         const icon =
             mode === IconMode.NONE
                 ? undefined
-                : (value.icon ??
-                  (mode === IconMode.SUGGESTION_OR_PROVIDER
-                      ? this.plugin.getProviderIcon(value.providerId)
-                      : undefined));
+                : (value.icon ?? (mode === IconMode.SUGGESTION_OR_PROVIDER ? value.provider?.icon : undefined));
         if (icon) setIcon(el.createDiv({ cls: "completr-suggestion-icon" }), icon);
 
         const text = el.createDiv({ cls: "completr-suggestion-text" });
         if (value.matches?.length) renderMatches(text, value.displayName, value.matches);
         else text.setText(value.displayName);
 
-        if (value.providerId === "latex" && this.settings.latexPreview)
-            renderLatexPreview(el.createDiv({ cls: "completr-suggestion-preview" }), value.displayName);
+        if (value.detail) el.createDiv({ cls: "completr-suggestion-detail", text: value.detail });
+        if (value.previewTex && this.settings.latexPreview)
+            renderLatexPreview(el.createDiv({ cls: "completr-suggestion-preview" }), value.previewTex);
+
+        this.renderActions(value, el);
     }
+
+    /** Buttons that appear when hovering a suggestion. */
+    private renderActions(value: Suggestion, el: HTMLElement) {
+        const actions = el.createDiv({ cls: "completr-suggestion-actions" });
+        const add = (icon: string, tooltip: string, run: () => unknown) => {
+            const button = actions.createDiv({ cls: "completr-suggestion-action" });
+            setIcon(button, icon);
+            setTooltip(button, tooltip);
+            button.addEventListener("click", (evt) => {
+                // Don't insert the suggestion
+                evt.stopPropagation();
+                void run();
+            });
+        };
+
+        const file = value.provider?.customEntries;
+        const entry = value.customEntry;
+        if (file && entry) add("pencil", file.kind.editTitle, () => this.editCustomEntry(value));
+
+        const hotkey = getHotkeyLabel(this.plugin, BLACKLIST_COMMAND);
+        add("eye-off", "Never suggest this" + (hotkey ? ` (${hotkey})` : ""), () => this.hideSuggestion(value));
+    }
+
+    private editCustomEntry(value: Suggestion) {
+        const file = value.provider?.customEntries;
+        if (!file || !value.customEntry) return;
+        this.close();
+        new CustomEntryModal(this.app, file, { existing: value.customEntry }).open();
+    }
+
+    /** Adds a suggestion to the blacklist, with a way to undo it. */
+    readonly hideSuggestion = guarded(async (value: Suggestion) => {
+        const name = value.displayName;
+        await this.plugin.blacklistSuggestion(name);
+
+        const message = createFragment((fragment) => {
+            fragment.appendText(`Completr: "${name}" won't be suggested anymore. `);
+            const undo = fragment.createEl("a", { text: "Undo" });
+            // Keep the focus in the editor
+            undo.addEventListener("mousedown", (evt) => evt.preventDefault());
+            undo.addEventListener(
+                "click",
+                guarded(() => this.plugin.blacklist.remove(name)),
+            );
+        });
+        new Notice(message, 6000);
+    });
 
     selectSuggestion(value: Suggestion): void {
         const ctx = this.context;
@@ -250,8 +316,8 @@ export class SuggestionPopup extends EditorSuggest<Suggestion> {
         if (value.appendSpace && !/^\s/.test(editor.cm.state.doc.sliceString(to, to + 1))) replacement += " ";
 
         this.close();
-        if (value.isSnippet) {
-            insertSnippet(editor.cm, from, to, replacement, value.snippetSyntax);
+        if (value.snippet) {
+            insertSnippet(editor.cm, from, to, replacement, value.snippet);
         } else {
             editor.cm.dispatch({
                 changes: { from, to, insert: replacement },

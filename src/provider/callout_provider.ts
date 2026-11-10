@@ -2,7 +2,6 @@ import type { Plugin } from "obsidian";
 import { type CalloutManager, getApi } from "obsidian-callout-manager";
 import type { DataFiles } from "../data_files.ts";
 import { CalloutProviderSource, type CompletrSettings } from "../settings.ts";
-import type { SuggestionBlacklist } from "./blacklist.ts";
 import { getCalloutCompletion } from "./callout_syntax.ts";
 import { type Suggestion, type SuggestionContext, type SuggestionProvider, suggestion } from "./provider.ts";
 
@@ -21,7 +20,6 @@ export class CalloutProvider implements SuggestionProvider {
     constructor(
         private readonly plugin: Plugin,
         private readonly files: DataFiles,
-        private readonly blacklist: SuggestionBlacklist,
     ) {}
 
     getSuggestions(context: SuggestionContext, settings: CompletrSettings): Suggestion[] {
@@ -38,7 +36,6 @@ export class CalloutProvider implements SuggestionProvider {
 
         const { search } = completion;
         return this.suggestions
-            .filter((s) => !this.blacklist.has(s.displayName))
             .filter(
                 (s) => s.displayName.toLowerCase().startsWith(search) || s.replacement.toLowerCase().startsWith(search),
             )

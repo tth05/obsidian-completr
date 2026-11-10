@@ -402,6 +402,123 @@ describe("manual trigger", () => {
         await expectText(obsidian, "Some text <|>");
     });
 
+    test("a manually opened popup stays open while typing below the minimum length", async () => {
+        await openNote(obsidian, "Some text\n<|>");
+        // One and two characters, minWordTriggerLength is 3
+        await obsidian.type("x");
+        await obsidian.press(" ", "Mod");
+        await waitForItems(obsidian, XYL_WORDS);
+        await obsidian.type("y");
+        await waitForItems(obsidian, XYL_WORDS);
+        expect((await popupInternals(obsidian)).focused).toBe(true);
+        await obsidian.type("li");
+        await waitForItems(obsidian, ["xylitol"]);
+        // Deleting characters again keeps it open as well
+        await obsidian.press("Backspace");
+        await obsidian.press("Backspace");
+        await obsidian.press("Backspace");
+        await waitForItems(obsidian, XYL_WORDS);
+        await expectText(obsidian, "Some text\nx<|>");
+
+        await obsidian.press("Enter");
+        await expectText(obsidian, "Some text\nxylem<|>");
+    });
+
+    test("after a manually opened popup was closed, the minimum length applies again", async () => {
+        await openNote(obsidian, "Some text\n<|>");
+        await obsidian.type("x");
+        await obsidian.expectNoPopup(150);
+        await obsidian.press(" ", "Mod");
+        await waitForItems(obsidian, XYL_WORDS);
+        await obsidian.press("Escape");
+        await waitForClosed(obsidian);
+
+        await obsidian.type("y");
+        await obsidian.expectNoPopup(150);
+        await obsidian.type("l");
+        await waitForItems(obsidian, XYL_WORDS);
+    });
+
+    test("a manually opened popup closes when nothing matches, the minimum length applies again", async () => {
+        await openNote(obsidian, "Some text\n<|>");
+        await obsidian.type("x");
+        await obsidian.press(" ", "Mod");
+        await waitForItems(obsidian, XYL_WORDS);
+        await obsidian.type("q");
+        await waitForClosed(obsidian);
+        expect((await popupInternals(obsidian)).isOpen).toBe(false);
+
+        await obsidian.press("Backspace");
+        await obsidian.type("y");
+        await expectText(obsidian, "Some text\nxy<|>");
+        await obsidian.expectNoPopup(150);
+        await obsidian.type("l");
+        await waitForItems(obsidian, XYL_WORDS);
+    });
+
+    // Guards against manual mode outliving its word: the empty query after the space would list all known words.
+    test("a manually opened popup closes when the word is finished with a space", async () => {
+        await openNote(obsidian, "Some text\n<|>");
+        await obsidian.type("x");
+        await obsidian.press(" ", "Mod");
+        await waitForItems(obsidian, XYL_WORDS);
+        await obsidian.type("y ");
+        await waitForClosed(obsidian);
+        await obsidian.expectNoPopup(100);
+        // Enter is a newline again, it doesn't insert a suggestion
+        await obsidian.press("Enter");
+        await expectText(obsidian, "Some text\nxy \n<|>");
+    });
+
+    /** Fails while the popup is closed during the next `ms` milliseconds. */
+    async function expectPopupStaysOpen(ms: number) {
+        const deadline = Date.now() + ms;
+        while (Date.now() < deadline) {
+            expect((await obsidian.popup()).visible, "the popup is still open").toBe(true);
+            await Bun.sleep(25);
+        }
+    }
+
+    // Guards against Obsidian's deferred re-trigger (about 20 ms later, empty query) ending manual mode.
+    test("a popup opened with Mod+Space on an empty line stays open", async () => {
+        await openNote(obsidian, "Some text\n<|>");
+        await obsidian.press(" ", "Mod");
+        await obsidian.waitForPopup((p) => p.items.includes("dandruff"));
+        await expectPopupStaysOpen(300);
+    });
+
+    test("a popup opened on an empty line closes when a typed letter is deleted again", async () => {
+        await openNote(obsidian, "Some text\n<|>");
+        await obsidian.press(" ", "Mod");
+        await obsidian.waitForPopup((p) => p.items.includes("dandruff"));
+        await obsidian.type("x");
+        await waitForItems(obsidian, XYL_WORDS);
+        await obsidian.press("Backspace");
+        await waitForClosed(obsidian);
+        await expectText(obsidian, "Some text\n<|>");
+    });
+
+    // Guards against the refresh after hiding (empty query) ending manual mode.
+    test("hiding a suggestion of a popup opened on an empty line keeps it open with the other words", async () => {
+        await openNote(obsidian, "Some text\n<|>");
+        await obsidian.press(" ", "Mod");
+        const before = await obsidian.waitForPopup((p) => p.items.includes("dandruff") && p.selected === 0);
+        const hidden = before.items[0];
+        try {
+            await obsidian.press("D", "Mod", "Shift");
+            const after = await obsidian.waitForPopup((p) => !p.items.includes(hidden));
+            // The rest of the list, in the same order
+            expect(after.items.slice(0, before.items.length - 1)).toEqual(before.items.slice(1));
+            for (const word of [...XYL_WORDS, ...DAN_WORDS].filter((w) => w !== hidden))
+                expect(after.items).toContain(word);
+            // It doesn't close a moment later either
+            await expectPopupStaysOpen(300);
+            await expectText(obsidian, "Some text\n<|>");
+        } finally {
+            await unblacklist(obsidian, [hidden]);
+        }
+    });
+
     test("the toggle auto trigger command switches automatic opening off and on", async () => {
         const toggle = () =>
             obsidian.eval((id: string) => {

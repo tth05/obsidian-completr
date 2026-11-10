@@ -52,8 +52,8 @@ export abstract class DictionaryProvider implements SuggestionProvider {
 
     protected abstract isEnabled(settings: CompletrSettings): boolean;
 
-    /** The words to search in for the given context. */
-    protected abstract getIndex(context: SuggestionContext, settings: CompletrSettings): WordIndex;
+    /** The words to search in. */
+    protected abstract getIndex(settings: CompletrSettings): WordIndex;
 
     getSuggestions(context: SuggestionContext, settings: CompletrSettings): Suggestion[] {
         if (!this.isEnabled(settings)) return [];
@@ -64,7 +64,7 @@ export abstract class DictionaryProvider implements SuggestionProvider {
         if (!context.manual && (query.length === 0 || query.length < settings.minWordTriggerLength)) return [];
 
         const appendMode = settings.wordInsertionMode === WordInsertionMode.IGNORE_CASE_APPEND;
-        const matches = this.getIndex(context, settings).search(query, {
+        const matches = this.getIndex(settings).search(query, {
             ...getNormalization(settings),
             fuzzy: settings.fuzzyMatching,
             fuzzyLimit: MAX_RESULTS,

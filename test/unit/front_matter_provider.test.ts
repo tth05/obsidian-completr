@@ -173,7 +173,7 @@ describe("FrontMatterProvider", () => {
                     replacement: "---\n~\n---",
                     overrideStart: { line: 0, ch: 0 },
                     overrideEnd: { line: 0, ch: 3 },
-                    isSnippet: true,
+                    snippet: "latex",
                 },
             ]);
         });
@@ -218,13 +218,13 @@ describe("FrontMatterProvider", () => {
                     displayName: "aliases: [#]",
                     replacement: "aliases: [~]",
                     overrideStart: { line: 1, ch: 0 },
-                    isSnippet: true,
+                    snippet: "latex",
                 },
                 {
                     displayName: "aliases: \\...",
                     replacement: "aliases:\n- ~",
                     overrideStart: { line: 1, ch: 0 },
-                    isSnippet: true,
+                    snippet: "latex",
                 },
             ]);
         });

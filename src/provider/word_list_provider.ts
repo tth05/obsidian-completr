@@ -1,7 +1,6 @@
 import { type DataFiles, splitLines } from "../data_files.ts";
 import type { CompletrSettings } from "../settings.ts";
 import { WordIndex } from "../word_index.ts";
-import type { SuggestionBlacklist } from "./blacklist.ts";
 import { DictionaryProvider, getNormalization } from "./dictionary_provider.ts";
 
 export const WORD_LISTS_FOLDER = "wordLists";
@@ -13,10 +12,7 @@ export class WordListProvider extends DictionaryProvider {
 
     private readonly index = new WordIndex();
 
-    constructor(
-        private readonly files: DataFiles,
-        private readonly blacklist: SuggestionBlacklist,
-    ) {
+    constructor(private readonly files: DataFiles) {
         super();
     }
 
@@ -35,18 +31,18 @@ export class WordListProvider extends DictionaryProvider {
     /** (Re)loads all word lists. Returns the number of loaded words. */
     async load(settings: CompletrSettings): Promise<number> {
         const words: string[] = [];
-        for (const path of await this.getFilePaths()) {
-            let data: string;
+        for (const name of await this.getFileNames()) {
+            let data: string | null;
             try {
-                data = await this.files.readPath(path);
+                data = await this.files.read(WORD_LISTS_FOLDER + "/" + name);
             } catch (e) {
-                console.warn("Completr: Unable to read word list " + path, e);
+                console.warn("Completr: Unable to read word list " + name, e);
                 continue;
             }
 
-            for (const line of splitLines(data)) {
+            for (const line of splitLines(data ?? "")) {
                 const word = line.trim();
-                if (word.length >= settings.minWordLength && !this.blacklist.has(word)) words.push(word);
+                if (word) words.push(word);
             }
         }
 
@@ -56,13 +52,10 @@ export class WordListProvider extends DictionaryProvider {
         return this.index.size;
     }
 
-    removeWord(word: string) {
-        this.index.delete(word);
-    }
-
-    /** Vault relative paths of all word list files. */
-    getFilePaths(): Promise<string[]> {
-        return this.files.list(WORD_LISTS_FOLDER);
+    /** The names of all word list files. */
+    async getFileNames(): Promise<string[]> {
+        const names = await this.files.list(WORD_LISTS_FOLDER);
+        return names.map((name) => name.substring(name.lastIndexOf("/") + 1));
     }
 
     /** Returns false if a list with this name already exists. */
@@ -73,7 +66,7 @@ export class WordListProvider extends DictionaryProvider {
         return true;
     }
 
-    async deleteWordList(path: string) {
-        await this.files.removePath(path);
+    async deleteWordList(name: string) {
+        await this.files.remove(WORD_LISTS_FOLDER + "/" + name);
     }
 }

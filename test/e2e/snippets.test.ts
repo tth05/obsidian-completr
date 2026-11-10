@@ -1,6 +1,8 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { getObsidian, type Obsidian } from "./harness/obsidian.ts";
 import { clickAt, openFreshNote, placeholders, recordDocuments, selectAndInsert } from "./helpers/latex.ts";
+import { clickModalButton, fillEntryModal, waitForEntryModal, waitForNoModal } from "./helpers/settings_tab.ts";
+import { forgetScannedWords, renderedItems } from "./helpers/words.ts";
 
 let obsidian: Obsidian;
 beforeAll(async () => {
@@ -219,7 +221,7 @@ describe("custom snippets", () => {
 
     async function setSnippets(snippets: { displayName: string; replacement: string }[]) {
         await obsidian.eval(
-            (s: typeof snippets) => app.plugins.plugins["obsidian-completr"]!.snippets.setSnippets(s),
+            (s: typeof snippets) => app.plugins.plugins["obsidian-completr"]!.snippets.customEntries.set(s),
             snippets,
         );
     }
@@ -293,4 +295,103 @@ describe("custom snippets", () => {
         await obsidian.setSettings({ snippetsEnabled: false });
         await expectNoMeetingSnippet("<|>");
     });
+
+    test("a name starting with a word character only matches at the start of a word", async () => {
+        await expectNoMeetingSnippet("home<|>");
+        await expectNoMeetingSnippet("Text home<|>");
+    });
+
+    test("the popup shows the first line of what a snippet inserts", async () => {
+        await openFreshNote(obsidian, "<|>");
+        await obsidian.type("meet");
+        await obsidian.waitForPopup((p) => p.items.includes("meeting"));
+        const item = (await renderedItems(obsidian)).find((i) => i.text === "meeting");
+        expect(item?.detail).toBe("## Meeting {{title}} …");
+    });
+
+    describe("a name starting with a non-word character (:sig)", () => {
+        const SIG = { displayName: ":sig", replacement: "Best regards, {{}}" };
+        beforeEach(() => setSnippets([MEETING, SIG]));
+
+        async function expectNoSig() {
+            const deadline = Date.now() + 250;
+            while (Date.now() < deadline) {
+                expect((await obsidian.popup()).items).not.toContain(":sig");
+                await Bun.sleep(25);
+            }
+        }
+
+        test("is not suggested after the trigger character alone", async () => {
+            await openFreshNote(obsidian, "Text <|>");
+            await obsidian.type(":");
+            await expectNoSig();
+        });
+
+        test("is suggested after two characters, also right after a word, and replaces them", async () => {
+            for (const before of ["Text ", "Text"]) {
+                await openFreshNote(obsidian, `${before}<|>`);
+                await obsidian.type(":s");
+                await obsidian.waitForPopup((p) => p.items[0] === ":sig");
+                expect((await renderedItems(obsidian))[0].detail).toBe("Best regards, {{}}");
+                await obsidian.press("Enter");
+                expect(await text()).toBe(`${before}Best regards, <|>`);
+            }
+        });
+    });
+});
+
+test("'Create snippet from selection' opens the dialog with the selection, the snippet can be used right away", async () => {
+    const original = await obsidian.eval(() =>
+        app.plugins.plugins["obsidian-completr"]!.snippets.customEntries.entries.map((e) => ({ ...e })),
+    );
+    try {
+        await openFreshNote(obsidian, "Sigzzone,\nSigzztwo\n<|>");
+        await obsidian.eval(() => {
+            const editor = app.workspace.activeEditor!.editor!;
+            editor.setSelection({ line: 0, ch: 0 }, { line: 1, ch: 8 });
+        });
+        const name = await obsidian.eval(() => {
+            const { commands } = app.commands as unknown as { commands: Record<string, { name: string }> };
+            return commands["obsidian-completr:completr-create-snippet-from-selection"]?.name;
+        });
+        expect(name).toBe("Completr: Create snippet from selection");
+        await obsidian.runCommand("completr-create-snippet-from-selection");
+
+        expect(await waitForEntryModal(obsidian)).toEqual({
+            title: "Add snippet",
+            name: "",
+            replacement: "Sigzzone,\nSigzztwo",
+        });
+        await fillEntryModal(obsidian, "sigteam", null);
+        await clickModalButton(obsidian, "Add");
+        await waitForNoModal(obsidian);
+        expect(
+            JSON.parse((await obsidian.readVaultFile(".obsidian/plugins/obsidian-completr/snippets.json"))!),
+        ).toEqual([...original, { displayName: "sigteam", replacement: "Sigzzone,\nSigzztwo" }]);
+
+        await openFreshNote(obsidian, "<|>");
+        await obsidian.type("sigt");
+        await selectAndInsert(obsidian, "sigteam");
+        expect(await text()).toBe("Sigzzone,\nSigzztwo<|>");
+    } finally {
+        await obsidian.eval(
+            (entries) => app.plugins.plugins["obsidian-completr"]!.snippets.customEntries.set(entries),
+            original,
+        );
+        await forgetScannedWords(obsidian, ["Sigzzone", "Sigzztwo", "sigt"]);
+    }
+});
+
+test("'Create snippet from selection' is not available without a selection", async () => {
+    await openFreshNote(obsidian, "Some text<|>");
+    const available = await obsidian.eval(() => {
+        const commands = app.commands as unknown as {
+            commands: Record<string, { editorCheckCallback?: (checking: boolean, editor: unknown) => boolean }>;
+        };
+        return commands.commands["obsidian-completr:completr-create-snippet-from-selection"].editorCheckCallback!(
+            true,
+            app.workspace.activeEditor!.editor!,
+        );
+    });
+    expect(available).toBe(false);
 });

@@ -189,16 +189,63 @@ export async function clickButton(obsidian: Obsidian, group: string | null, name
     );
 }
 
-/** Clicks an extra (icon) button by its tooltip. `name` null means the buttons of the group heading. */
-export async function clickExtraButton(obsidian: Obsidian, group: string, name: string | null, tooltip: string) {
+/** Texts of the buttons of a setting, in order. */
+export function buttonTexts(obsidian: Obsidian, group: string | null, name: string): Promise<string[]> {
+    return obsidian.eval(
+        (group: string | null, name: string) =>
+            Array.from(window.__e2eFindSetting!(group, name).querySelectorAll("button"), (b) => b.textContent ?? ""),
+        group,
+        name,
+    );
+}
+
+/** The description below the name of a setting. */
+export function settingDescription(obsidian: Obsidian, group: string | null, name: string): Promise<string> {
+    return obsidian.eval(
+        (group: string | null, name: string) =>
+            window.__e2eFindSetting!(group, name).querySelector(".setting-item-description")?.textContent ?? "",
+        group,
+        name,
+    );
+}
+
+/** Labels of the options of a dropdown, in order. */
+export function dropdownLabels(obsidian: Obsidian, group: string | null, name: string): Promise<string[]> {
+    return obsidian.eval(
+        (group: string | null, name: string) =>
+            Array.from(
+                window.__e2eFindSetting!(group, name).querySelectorAll<HTMLOptionElement>(
+                    "select.dropdown:not(.is-measuring) option",
+                ),
+                (o) => o.textContent ?? "",
+            ),
+        group,
+        name,
+    );
+}
+
+/**
+ * Waits for the setting of a group whose name matches (rows that are named by a count, like "3 snippets") and returns
+ * its name.
+ */
+export function waitForSettingName(obsidian: Obsidian, group: string | null, name: RegExp): Promise<string> {
+    return obsidian.waitFor(async () => (await settingNames(obsidian, group)).find((n) => name.test(n)), {
+        what: `a setting matching ${String(name)} in ${group ?? "the first group"}`,
+    });
+}
+
+/**
+ * Clicks an extra (icon) button by (the start of) its tooltip. `name` null means the buttons of the group heading.
+ */
+export async function clickExtraButton(obsidian: Obsidian, group: string | null, name: string | null, tooltip: string) {
     await obsidian.eval(
-        (group: string, name: string | null, tooltip: string) => {
+        (group: string | null, name: string | null, tooltip: string) => {
             const el =
                 name === null
                     ? window.__e2eFindSetting!(group, null).querySelector(".setting-item-heading")!
                     : window.__e2eFindSetting!(group, name);
-            const button = Array.from(el.querySelectorAll<HTMLElement>(".extra-setting-button")).find(
-                (b) => b.getAttribute("aria-label") === tooltip,
+            const button = Array.from(el.querySelectorAll<HTMLElement>(".extra-setting-button")).find((b) =>
+                b.getAttribute("aria-label")?.startsWith(tooltip),
             );
             if (!button) throw new Error("Extra button not found: " + tooltip);
             button.click();
@@ -283,6 +330,44 @@ export function listModalMessage(obsidian: Obsidian): Promise<string | null> {
     );
 }
 
+/** Descriptions (e.g. the summarized replacement) of the entries in the open list modal, by entry name. */
+export function listModalDescriptions(obsidian: Obsidian): Promise<Record<string, string>> {
+    return obsidian.eval(() => {
+        const modal = Array.from(document.querySelectorAll(".completr-list-modal")).at(-1);
+        return Object.fromEntries(
+            Array.from(modal?.querySelectorAll(".completr-list-item") ?? [], (item) => [
+                item.querySelector(".setting-item-name")?.textContent ?? "",
+                item.querySelector(".setting-item-description")?.textContent ?? "",
+            ]),
+        );
+    });
+}
+
+/** Tooltips of the icon buttons and texts of the buttons next to the filter of the open list modal. */
+export function listModalToolbar(obsidian: Obsidian): Promise<{ icons: string[]; buttons: string[] }> {
+    return obsidian.eval(() => {
+        const toolbar = Array.from(document.querySelectorAll(".completr-list-modal"))
+            .at(-1)!
+            .querySelector(".completr-list-toolbar")!;
+        return {
+            icons: Array.from(toolbar.querySelectorAll(".extra-setting-button"), (b) => b.getAttribute("aria-label")!),
+            buttons: Array.from(toolbar.querySelectorAll("button"), (b) => b.textContent ?? ""),
+        };
+    });
+}
+
+/** Clicks an icon button (by tooltip) next to the filter of the open list modal. */
+export async function clickListModalToolbarIcon(obsidian: Obsidian, tooltip: string) {
+    await obsidian.eval((tooltip: string) => {
+        const modal = Array.from(document.querySelectorAll(".completr-list-modal")).at(-1)!;
+        const button = Array.from(
+            modal.querySelectorAll<HTMLElement>(".completr-list-toolbar .extra-setting-button"),
+        ).find((b) => b.getAttribute("aria-label") === tooltip);
+        if (!button) throw new Error(`Toolbar button "${tooltip}" not found`);
+        button.click();
+    }, tooltip);
+}
+
 export async function filterListModal(obsidian: Obsidian, text: string) {
     await obsidian.eval((text: string) => {
         const modal = Array.from(document.querySelectorAll(".completr-list-modal")).at(-1)!;
@@ -317,6 +402,37 @@ export async function closeTopModal(obsidian: Obsidian) {
     const before = await count();
     await obsidian.press("Escape");
     await obsidian.waitFor(async () => (await count()) < before, { what: "the modal to close" });
+}
+
+export interface EntryModal {
+    title: string;
+    name: string;
+    replacement: string;
+}
+
+/** Title and field values of the open add/edit entry modal, null if the topmost modal isn't one. */
+export function entryModal(obsidian: Obsidian): Promise<EntryModal | null> {
+    return obsidian.eval(() => {
+        const modal = Array.from(document.querySelectorAll(".modal:not(.mod-settings)")).at(-1);
+        const name = modal?.querySelector<HTMLInputElement>("input[type=text]");
+        const replacement = modal?.querySelector("textarea");
+        if (!modal || !name || !replacement) return null;
+        return {
+            title: modal.querySelector(".modal-title")?.textContent ?? "",
+            name: name.value,
+            replacement: replacement.value,
+        };
+    });
+}
+
+/** Waits for the add/edit entry modal to open. */
+export function waitForEntryModal(obsidian: Obsidian): Promise<EntryModal> {
+    return obsidian.waitFor(() => entryModal(obsidian), { what: "the entry modal" });
+}
+
+/** Waits until no modal is open on top of the settings. */
+export async function waitForNoModal(obsidian: Obsidian) {
+    await obsidian.waitFor(async () => (await topModalText(obsidian)) === null, { what: "the modal to close" });
 }
 
 /** Sets the name and replacement fields of the open add/edit entry modal. */

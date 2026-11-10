@@ -48,6 +48,8 @@ All keys are commands, change them under *Settings -> Hotkeys* (filter for "Comp
 | Bypass the popup, press Enter    | `Ctrl + Enter`          |
 | Bypass the popup, press Tab      | `Ctrl + Tab`            |
 | Toggle automatic popup           | -                       |
+| Create snippet from selection    | -                       |
+| Learn the words of all notes     | -                       |
 
 - Keys that aren't used by the popup go to the editor as usual, e.g. `Shift + Tab` or `Home` close the popup and do
   their normal thing.
@@ -55,16 +57,18 @@ All keys are commands, change them under *Settings -> Hotkeys* (filter for "Comp
   the Completr settings instead.
 - If *Select first suggestion* is disabled, `Enter` creates a new line until you pick a suggestion with the arrow keys.
 - In vim mode, `Escape` closes the popup and leaves insert mode.
+- A popup opened with `Ctrl/Cmd + Space` ignores the minimum typed length for the word it was opened on.
 
 ### Blacklist
 
-Select a suggestion and press `Ctrl/Cmd + Shift + D` to never see it again. Blacklisted suggestions are listed at the bottom of the
-settings, where they can be removed again.
+Hover a suggestion and click the eye icon, or select it and press `Ctrl/Cmd + Shift + D`, to never see it again. A
+notice lets you undo that right away. Later, use *Manage* in the *Blacklist* section at the bottom of the settings.
 
 ### Custom LaTeX commands
 
-Add them in the settings or edit `latex_commands.json` in the plugin folder. The file contains a JSON array of either
-strings or objects:
+Add them in the settings (*LaTeX -> Add LaTeX command*) or edit `latex_commands.json` in the plugin folder. In the
+popup, hovering one of your commands shows a pencil icon that opens it for editing. The file contains a JSON array of
+either strings or objects:
 
 ```json
 ["\\mycommand{#}", { "displayName": "\\myenv", "replacement": "\\begin{myenv}\n~\n\\end{myenv}" }]
@@ -75,9 +79,14 @@ settings.
 
 ### Snippets
 
-Snippets work outside of math blocks: typing the start of a snippet's name suggests it. Add them in the settings or in
-`snippets.json` (same format as the LaTeX commands). Since `#` and `~` are common in markdown, snippets use a different
-placeholder syntax:
+Snippets work outside of math blocks: typing the start of a snippet's name suggests it, with the start of its text next
+to it. Add them in the settings, with the *Create snippet from selection* command, or in `snippets.json` (same format as
+the LaTeX commands).
+
+A name can be anything. Starting it with a character like `:` or `/` (`:sig`, `/date`) keeps a snippet out of the way
+of normal words: it is only suggested once that character and one more are typed.
+
+Since `#` and `~` are common in markdown, snippets use a different placeholder syntax:
 
 - `{{}}`: an empty placeholder
 - `{{some text}}`: a placeholder pre-filled with "some text", which is selected so typing replaces it

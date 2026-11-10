@@ -1,6 +1,7 @@
 import { EditorView } from "@codemirror/view";
-import { debounce, type Editor, MarkdownView, Notice, Plugin, TFile } from "obsidian";
+import { debounce, type Editor, Notice, Plugin, TFile } from "obsidian";
 import { DataFiles } from "./data_files.ts";
+import { reportError } from "./errors.ts";
 import { createKeymap, registerCommands } from "./keybindings.ts";
 import { SuggestionPopup } from "./popup.ts";
 import { SuggestionBlacklist } from "./provider/blacklist.ts";
@@ -51,11 +52,11 @@ export default class CompletrPlugin extends Plugin {
         this.blacklist = new SuggestionBlacklist(this.files);
         this.usage = new SuggestionUsage(this.files);
         this.frontMatter = new FrontMatterProvider();
-        this.callout = new CalloutProvider(this, this.files, this.blacklist);
+        this.callout = new CalloutProvider(this, this.files);
         this.latex = new LatexProvider(this.files, this.blacklist);
-        this.snippets = new SnippetProvider(this.files, this.blacklist);
-        this.fileScanner = new FileScannerProvider(this.files, this.blacklist);
-        this.wordList = new WordListProvider(this.files, this.blacklist);
+        this.snippets = new SnippetProvider(this.files);
+        this.fileScanner = new FileScannerProvider(this.files);
+        this.wordList = new WordListProvider(this.files);
         this.providers = [this.frontMatter, this.callout, this.snippets, this.latex, this.fileScanner, this.wordList];
 
         this.popup = new SuggestionPopup(this.app, this);
@@ -71,7 +72,7 @@ export default class CompletrPlugin extends Plugin {
             this.app.workspace.onLayoutReady(async () => {
                 // Registered late, so that the suggests of Obsidian and other plugins get the first chance to trigger.
                 this.registerEditorSuggest(this.popup);
-                await this.loadDataFiles(migratedFrom);
+                await this.loadDataFiles();
                 this.registerEvents();
                 resolve();
             });
@@ -80,24 +81,37 @@ export default class CompletrPlugin extends Plugin {
 
     override onunload() {
         this.callout.unload();
-        void this.fileScanner.flush();
-        void this.usage.flush();
+        this.fileScanner.flush().catch(reportError);
+        this.usage.flush().catch(reportError);
     }
 
-    private async loadDataFiles(migratedFrom: number | null) {
-        await this.blacklist.load();
-        const errors = await Promise.all([
-            this.latex.load(migratedFrom === 1),
-            this.snippets.load(),
-            this.callout.load(this.settings),
-            this.wordList.load(this.settings).then(() => null),
-            this.fileScanner.load(this.settings).then(() => null),
-            this.usage.load().then(() => null),
-        ]);
-        for (const error of errors) if (error) new Notice("Completr: " + error, 8000);
+    /** Loads everything the providers need. One broken file must not keep the rest from working. */
+    private async loadDataFiles() {
+        const load = async (what: string, run: () => Promise<unknown> | void) => {
+            try {
+                // Loaders return a message if they could recover from a problem (e.g. an invalid file)
+                const problem = await run();
+                if (typeof problem === "string") new Notice("Completr: " + problem, 8000);
+            } catch (e) {
+                console.error(`Completr: Unable to load ${what}`, e);
+                new Notice(`Completr: Unable to load ${what}. See the developer console for details.`, 8000);
+            }
+        };
 
-        const { metadataCache, vault } = this.app;
-        this.frontMatter.loadAll(metadataCache, vault.getMarkdownFiles());
+        // First, the LaTeX commands may add to it
+        await load("the blacklist", () => this.blacklist.load());
+        await Promise.all([
+            load("the LaTeX commands", () => this.latex.load()),
+            load("the snippets", () => this.snippets.load()),
+            load("the callouts", () => this.callout.load(this.settings)),
+            load("the word lists", () => this.wordList.load(this.settings)),
+            load("the scanned words", () => this.fileScanner.load(this.settings)),
+            load("the usage counts", () => this.usage.load()),
+            load("the front matter", () => {
+                this.frontMatter.loadAll(this.app.metadataCache, this.app.vault.getMarkdownFiles());
+            }),
+        ]);
+
         const editor = this.app.workspace.activeEditor?.editor;
         if (editor) this.scanEditor(editor, false);
     }
@@ -110,13 +124,13 @@ export default class CompletrPlugin extends Plugin {
 
         this.registerEvent(
             workspace.on("file-open", (file) => {
-                if (!(file instanceof TFile)) return;
-                const editor = workspace.getActiveViewOfType(MarkdownView)?.editor;
-                if (editor) this.scanEditor(editor, false);
-                else
-                    void vault
-                        .cachedRead(file)
-                        .then((text) => this.fileScanner.setCurrentFileText(text, this.settings));
+                // Only notes have words to learn, not PDFs, images or canvases
+                if (!(file instanceof TFile) || file.extension !== "md") return;
+                // The editor of a new tab or split is still empty at this point, the vault has the text
+                vault
+                    .cachedRead(file)
+                    .then((text) => this.fileScanner.setCurrentFileText(text, this.settings))
+                    .catch(reportError);
             }),
         );
 
@@ -124,10 +138,11 @@ export default class CompletrPlugin extends Plugin {
         this.registerEvent(workspace.on("editor-change", (editor) => scanLater(editor)));
     }
 
-    /** Picks up the words of the note being edited, except the one at the cursor which might be incomplete. */
-    /** @param editing skip the word at the cursor, which might still be typed */
+    /**
+     * Picks up the words of the note being edited.
+     * @param editing skip the word at the cursor, which might still be typed
+     */
     private scanEditor(editor: Editor, editing: boolean) {
-        if (!this.settings.fileScannerProviderEnabled) return;
         this.fileScanner.setCurrentFileText(
             editor.getValue(),
             this.settings,
@@ -135,28 +150,25 @@ export default class CompletrPlugin extends Plugin {
         );
     }
 
+    /** Learns the words of all notes. */
+    async scanVault() {
+        const notice = new Notice("Completr: Scanning all notes...", 0);
+        try {
+            const files = this.app.vault.getMarkdownFiles();
+            const scanned = await this.fileScanner.scanFiles(this.app.vault, files, this.settings);
+            new Notice(`Completr: Scanned ${scanned} notes, ${this.fileScanner.wordCount} known words`);
+        } finally {
+            notice.hide();
+        }
+    }
+
     async saveSettings() {
         await this.saveData(this.settings);
     }
 
-    getProviderIcon(providerId: string | undefined): string | undefined {
-        return this.providers.find((p) => p.id === providerId)?.icon;
-    }
-
-    /** Shows a blacklisted suggestion again. Scanned words come back once they are scanned again. */
-    async unblacklistSuggestion(displayName: string) {
-        await this.blacklist.remove(displayName);
-        this.latex.rebuildIndex();
-        // The word was removed from the word lists' index when it was blacklisted
-        await this.wordList.load(this.settings);
-    }
-
-    /** Hides a suggestion everywhere and forgets it as a scanned word. */
+    /** Hides a suggestion everywhere. */
     async blacklistSuggestion(displayName: string) {
         await this.blacklist.add(displayName);
-        this.fileScanner.removeWord(displayName);
-        this.wordList.removeWord(displayName);
-        this.latex.rebuildIndex();
         this.popup.refresh();
     }
 }

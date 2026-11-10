@@ -120,13 +120,63 @@ describe("SuggestionUsage", () => {
         expect(saved(adapter)).toEqual({ a: 6 });
     });
 
-    test("clear resets all counts and saves", async () => {
+    test("size is the number of known suggestions", async () => {
+        const { usage } = setup(JSON.stringify({ a: 5, b: 1 }));
+        expect(usage.size).toBe(0);
+        await usage.load();
+        expect(usage.size).toBe(2);
+        usage.record("a");
+        expect(usage.size).toBe(2);
+        usage.record("c");
+        expect(usage.size).toBe(3);
+    });
+
+    test("clear resets all counts and has saved once it resolves", async () => {
         const { usage, adapter } = setup(JSON.stringify({ a: 5 }));
         await usage.load();
-        usage.clear();
-        await flushPromises();
+        await usage.clear();
         expect(usage.get("a")).toBe(0);
+        expect(usage.size).toBe(0);
         expect(saved(adapter)).toEqual({});
+        expect(adapter.writes).toHaveLength(1);
+    });
+
+    test("clear cancels a pending save instead of saving twice", async () => {
+        const { usage, adapter } = setup();
+        usage.record("a");
+        await usage.clear();
+        expect(timers.pending.size).toBe(0);
+        expect(adapter.writes).toEqual([[FILE, "{}"]]);
+    });
+
+    test("counting continues after clear", async () => {
+        const { usage, adapter } = setup(JSON.stringify({ a: 5 }));
+        await usage.load();
+        await usage.clear();
+        usage.record("a");
+        expect(usage.get("a")).toBe(1);
+        await usage.flush();
+        expect(saved(adapter)).toEqual({ a: 1 });
+    });
+
+    test("a failed save rejects flush and is retried by the next one", async () => {
+        const { usage, adapter } = setup();
+        usage.record("a");
+        adapter.failingWrites.add(FILE);
+        await expect(usage.flush()).rejects.toThrow("ENOSPC");
+        expect(adapter.files.has(FILE)).toBe(false);
+
+        adapter.failingWrites.clear();
+        await usage.flush();
+        expect(saved(adapter)).toEqual({ a: 1 });
+    });
+
+    test("clear rejects if the counts can't be saved", async () => {
+        const { usage, adapter } = setup(JSON.stringify({ a: 5 }));
+        await usage.load();
+        adapter.failingWrites.add(FILE);
+        await expect(usage.clear()).rejects.toThrow("ENOSPC");
+        expect(usage.size).toBe(0);
     });
 
     test("only the 5000 most used entries are saved", async () => {

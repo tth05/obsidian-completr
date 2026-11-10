@@ -472,6 +472,21 @@ export class Obsidian {
         await this.setSettings(this.defaultSettings);
     }
 
+    /**
+     * Runs one of Completr's commands like the command palette does. `id` is the id without the plugin prefix, e.g.
+     * "completr-scan-vault". Throws if there is no such command.
+     */
+    async runCommand(id: string) {
+        await this.eval((id: string) => {
+            const commands = app.commands as unknown as {
+                commands: Record<string, unknown>;
+                executeCommandById(id: string): boolean;
+            };
+            if (!(id in commands.commands)) throw new Error("No such command: " + id);
+            commands.executeCommandById(id);
+        }, `${PLUGIN_ID}:${id}`);
+    }
+
     /** Disables and re-enables the plugin (re-reads data.json and all data files). Resolves once it is loaded. */
     async reloadPlugin() {
         await this.eval(async (id: string) => {

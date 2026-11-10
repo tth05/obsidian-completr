@@ -14,6 +14,11 @@ declare module "obsidian" {
             getHotkeys(commandId: string): Hotkey[] | undefined;
             getDefaultHotkeys(commandId: string): Hotkey[] | undefined;
         };
+        setting: {
+            open(): void;
+            /** Opens a settings tab and returns it. The hotkeys tab can be filtered with `setQuery`. */
+            openTabById(id: string): { setQuery?(query: string): void } | null;
+        };
         commands: {
             /** Note: Always returns true if the command exists, even if its checkCallback returned false. */
             executeCommand(command: Command, evt?: Event): boolean;

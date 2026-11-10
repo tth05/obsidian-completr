@@ -1,6 +1,6 @@
-import { describe, expect, test } from "bun:test";
-import { decodeText, splitLines } from "../../src/data_files.ts";
-import { makeDataFiles, PLUGIN_FOLDER, pluginPath } from "./helpers.ts";
+import { describe, expect, spyOn, test } from "bun:test";
+import { DebouncedSaver, decodeText, splitLines } from "../../src/data_files.ts";
+import { flushPromises, makeDataFiles, PLUGIN_FOLDER, pluginPath, useFakeTimers } from "./helpers.ts";
 
 const bytes = (...values: number[]) => new Uint8Array(values).buffer;
 const utf8 = (text: string) => new TextEncoder().encode(text);
@@ -122,22 +122,189 @@ describe("DataFiles", () => {
         await files.remove("a.txt"); // does not throw
     });
 
-    test("list creates a missing folder and returns vault relative paths", async () => {
+    test("list creates a missing folder", async () => {
         const { files, adapter } = makeDataFiles();
         expect(await files.list("wordLists")).toEqual([]);
         expect(adapter.folders.has(pluginPath("wordLists"))).toBe(true);
+    });
 
+    test("list returns names relative to the plugin folder", async () => {
+        const { files } = makeDataFiles();
         await files.write("wordLists/b.txt", "b");
         await files.write("wordLists/a.txt", "a");
         await files.write("other.txt", "o");
-        expect(await files.list("wordLists")).toEqual([pluginPath("wordLists/a.txt"), pluginPath("wordLists/b.txt")]);
+        expect(await files.list("wordLists")).toEqual(["wordLists/a.txt", "wordLists/b.txt"]);
     });
 
-    test("readPath and removePath take vault relative paths", async () => {
+    test("listed names can be passed to the other methods", async () => {
         const { files, adapter } = makeDataFiles();
-        adapter.files.set("somewhere/else.txt", "data");
-        expect(await files.readPath("somewhere/else.txt")).toBe("data");
-        await files.removePath("somewhere/else.txt");
-        expect(adapter.files.has("somewhere/else.txt")).toBe(false);
+        await files.write("wordLists/a.txt", "content");
+        const [name] = await files.list("wordLists");
+        expect(await files.exists(name)).toBe(true);
+        expect(await files.read(name)).toBe("content");
+        await files.remove(name);
+        expect(adapter.files.has(pluginPath("wordLists/a.txt"))).toBe(false);
+    });
+
+    test("list does not include sub folders or their files", async () => {
+        const { files, adapter } = makeDataFiles();
+        await files.write("wordLists/a.txt", "a");
+        adapter.folders.add(pluginPath("wordLists/sub"));
+        await files.write("wordLists/sub/b.txt", "b");
+        expect(await files.list("wordLists")).toEqual(["wordLists/a.txt"]);
+    });
+});
+
+describe("DebouncedSaver", () => {
+    const timers = useFakeTimers();
+
+    /** A saver whose save function counts its calls and fails while `fail` is set. */
+    function setup(delay = 1000) {
+        const state = { saves: 0, fail: false };
+        const saver = new DebouncedSaver(() => {
+            state.saves++;
+            return state.fail ? Promise.reject(new Error("disk full")) : Promise.resolve();
+        }, delay);
+        return { saver, state };
+    }
+
+    test("nothing is saved or scheduled before the first change", () => {
+        const { state } = setup();
+        expect(timers.pending.size).toBe(0);
+        expect(state.saves).toBe(0);
+    });
+
+    test("several schedule() calls lead to a single save after the delay", async () => {
+        const { saver, state } = setup();
+        saver.schedule();
+        saver.schedule();
+        saver.schedule();
+        expect(timers.pending.size).toBe(1);
+        expect(state.saves).toBe(0);
+
+        timers.runAll();
+        await flushPromises();
+        expect(state.saves).toBe(1);
+        expect(timers.pending.size).toBe(0);
+    });
+
+    test.each([1, 2000, 5000])("the timer uses the given delay of %p ms", (delay) => {
+        const { saver } = setup(delay);
+        saver.schedule();
+        expect(timers.delays).toEqual([delay]);
+    });
+
+    test("a change after the delayed save schedules a new one", async () => {
+        const { saver, state } = setup();
+        saver.schedule();
+        timers.runAll();
+        await flushPromises();
+
+        saver.schedule();
+        expect(timers.pending.size).toBe(1);
+        timers.runAll();
+        await flushPromises();
+        expect(state.saves).toBe(2);
+    });
+
+    test("flush() without changes does nothing", async () => {
+        const { saver, state } = setup();
+        await saver.flush();
+        expect(state.saves).toBe(0);
+
+        saver.schedule();
+        await saver.flush();
+        await saver.flush();
+        expect(state.saves).toBe(1);
+    });
+
+    test("flush() saves right away and cancels the timer", async () => {
+        const { saver, state } = setup();
+        saver.schedule();
+        await saver.flush();
+        expect(state.saves).toBe(1);
+        expect(timers.pending.size).toBe(0);
+    });
+
+    test("flush() resolves only after the save is done", async () => {
+        let finish = () => {};
+        let done = false;
+        const saver = new DebouncedSaver(() => new Promise<void>((resolve) => (finish = resolve)), 1000);
+        saver.schedule();
+        const flushed = saver.flush().then(() => (done = true));
+        await flushPromises();
+        expect(done).toBe(false);
+        finish();
+        await flushed;
+        expect(done).toBe(true);
+    });
+
+    test("a failing save rejects flush() and is retried by the next flush()", async () => {
+        const { saver, state } = setup();
+        state.fail = true;
+        saver.schedule();
+        await expect(saver.flush()).rejects.toThrow("disk full");
+        expect(state.saves).toBe(1);
+
+        state.fail = false;
+        await saver.flush();
+        expect(state.saves).toBe(2);
+        // Saved now, nothing left to retry
+        await saver.flush();
+        expect(state.saves).toBe(2);
+    });
+
+    test("a failing delayed save is logged and retried by the next flush()", async () => {
+        const { saver, state } = setup();
+        const error = spyOn(console, "error").mockImplementation(() => {});
+        try {
+            state.fail = true;
+            saver.schedule();
+            timers.runAll();
+            await flushPromises();
+            expect(state.saves).toBe(1);
+            expect(error).toHaveBeenCalledTimes(1);
+        } finally {
+            error.mockRestore();
+        }
+
+        state.fail = false;
+        await saver.flush();
+        expect(state.saves).toBe(2);
+    });
+
+    test("a failing save is retried by the next scheduled save as well", async () => {
+        const { saver, state } = setup();
+        state.fail = true;
+        saver.schedule();
+        await expect(saver.flush()).rejects.toThrow("disk full");
+        expect(timers.pending.size).toBe(0);
+
+        state.fail = false;
+        saver.schedule();
+        timers.runAll();
+        await flushPromises();
+        expect(state.saves).toBe(2);
+    });
+
+    test("a change made while a save is running is saved afterwards", async () => {
+        let finish = () => {};
+        let saves = 0;
+        const saver = new DebouncedSaver(() => {
+            saves++;
+            return new Promise<void>((resolve) => (finish = resolve));
+        }, 1000);
+        saver.schedule();
+        const first = saver.flush();
+        saver.schedule();
+        finish();
+        await first;
+        expect(saves).toBe(1);
+        expect(timers.pending.size).toBe(1);
+
+        const second = saver.flush();
+        finish();
+        await second;
+        expect(saves).toBe(2);
     });
 });

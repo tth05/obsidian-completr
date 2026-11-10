@@ -10,8 +10,8 @@ class TestProvider extends DictionaryProvider {
     readonly icon = "test";
     enabled = true;
     readonly index = new WordIndex();
-    /** The contexts getIndex was called with. */
-    readonly indexRequests: SuggestionContext[] = [];
+    /** The settings getIndex was called with. */
+    readonly indexRequests: CompletrSettings[] = [];
 
     constructor(words: string[]) {
         super();
@@ -22,8 +22,8 @@ class TestProvider extends DictionaryProvider {
         return this.enabled;
     }
 
-    protected getIndex(context: SuggestionContext): WordIndex {
-        this.indexRequests.push(context);
+    protected getIndex(settings: CompletrSettings): WordIndex {
+        this.indexRequests.push(settings);
         return this.index;
     }
 }
@@ -123,11 +123,35 @@ describe("DictionaryProvider", () => {
         expect(provider.indexRequests).toEqual([]);
     });
 
-    test("the context is passed to getIndex", () => {
+    test("the settings are passed to getIndex", () => {
         const provider = new TestProvider(words);
-        const context = makeContext("hel");
-        provider.getSuggestions(context, makeSettings());
-        expect(provider.indexRequests).toEqual([context]);
+        const settings = makeSettings({ fileScannerCurrentFileOnly: true });
+        provider.getSuggestions(makeContext("hel"), settings);
+        expect(provider.indexRequests).toHaveLength(1);
+        expect(provider.indexRequests[0]).toBe(settings);
+    });
+
+    test("no index is asked for if the query is too short", () => {
+        const provider = new TestProvider(words);
+        provider.getSuggestions(makeContext("he"), makeSettings({ minWordTriggerLength: 3 }));
+        provider.getSuggestions(makeContext(""), makeSettings());
+        expect(provider.indexRequests).toEqual([]);
+    });
+
+    test("the math type of the context does not matter", () => {
+        const provider = new TestProvider(words);
+        const context = makeContext("hel", {
+            mathType: () => {
+                throw new Error("must not be called");
+            },
+        });
+        expect(provider.getSuggestions(context, makeSettings())).toHaveLength(4);
+    });
+
+    test("suggestions are plain words: no snippet, detail, preview or custom entry", () => {
+        for (const s of suggest(words, "hel", { fuzzyMatching: true })) {
+            expect(Object.keys(s).sort()).toEqual(["appendSpace", "displayName", "isFuzzy", "matches", "replacement"]);
+        }
     });
 
     describe("trigger length", () => {
@@ -163,6 +187,18 @@ describe("DictionaryProvider", () => {
             "abc",
             "abcd",
         ]);
+    });
+
+    test("minWordLength is applied per query, so changing it needs no reload of the words", () => {
+        const provider = new TestProvider(["ab", "abc", "abcd"]);
+        const query = (minWordLength: number) =>
+            provider
+                .getSuggestions(makeContext("a", { manual: true }), makeSettings({ minWordLength }))
+                .map((s) => s.displayName);
+        expect(query(4)).toEqual(["abcd"]);
+        expect(query(2)).toEqual(["ab", "abc", "abcd"]);
+        expect(query(3)).toEqual(["abc", "abcd"]);
+        expect(provider.index.size).toBe(3);
     });
 
     test("the exact typed word is not suggested", () => {

@@ -16,6 +16,7 @@ import { getContinuationPrefix } from "./text.ts";
  * (e.g. `\frac{}{}` instead of `\frac{#}{#}` which breaks the math preview).
  */
 
+/** Keep in sync with the .completr-placeholder-<n> rules in styles.css. */
 export const COLOR_COUNT = 7;
 
 interface Placeholder {
@@ -269,8 +270,4 @@ export function jumpToNextPlaceholder(view: EditorView) {
     const after = view.state.doc.sliceString(current.to, current.to + 1);
     const target = /^[)\]}]$/.test(after) ? current.to + 1 : current.to;
     view.dispatch({ selection: EditorSelection.cursor(target), effects: clearAll.of(null), scrollIntoView: true });
-}
-
-export function clearSnippets(view: EditorView) {
-    if (hasActiveSnippet(view.state)) view.dispatch({ effects: clearAll.of(null) });
 }

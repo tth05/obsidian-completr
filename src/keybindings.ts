@@ -1,15 +1,18 @@
 import { Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { around } from "monkey-around";
-import { type Command, type Editor, type Hotkey, type KeymapContext, type Modifier, Notice, Platform } from "obsidian";
+import { type Command, type Editor, type Hotkey, Notice } from "obsidian";
+import { guarded } from "./errors.ts";
+import { BLACKLIST_COMMAND, getHotkeys, isHotkeyMatch, OPEN_POPUP_COMMAND } from "./hotkeys.ts";
 import type CompletrPlugin from "./main.ts";
+import { CustomEntryModal } from "./modals.ts";
 import { SelectionDirection } from "./popup.ts";
 import { isInPlaceholder, jumpToNextPlaceholder } from "./snippets.ts";
 
 /*
  * How keys reach Completr:
  *
- * All navigation keys are regular Obsidian commands, so users can rebind them in the hotkey settings. Two Obsidian
+ * All navigation keys are regular Obsidian commands, so users can rebind them in the hotkey settings. Three Obsidian
  * behaviours get in the way of that, and are worked around here:
  *
  * 1. Obsidian's hotkey manager consumes a key as soon as a command with a matching hotkey exists, even if the command's
@@ -54,19 +57,6 @@ function editorCommand(
     };
 }
 
-function compileModifiers(modifiers: Modifier[]): string {
-    return modifiers
-        .map((m) => (m === "Mod" ? (Platform.isMacOS ? "Meta" : "Ctrl") : m))
-        .sort()
-        .join(",");
-}
-
-/** Same matching rules as Obsidian's hotkey manager. */
-function isHotkeyMatch(hotkey: Hotkey, ctx: KeymapContext): boolean {
-    if (compileModifiers(hotkey.modifiers) !== ctx.modifiers) return false;
-    return hotkey.key === ctx.vkey || (!!ctx.key && hotkey.key.toLowerCase() === ctx.key.toLowerCase());
-}
-
 /** Closes the popup and sends a key to the editor, without the modifiers that triggered the bypass command. */
 function bypassPopup(plugin: CompletrPlugin, editor: Editor, key: "Enter" | "Tab") {
     plugin.popup.close();
@@ -83,7 +73,7 @@ export function registerCommands(plugin: CompletrPlugin) {
 
     const commands: CompletrCommand[] = [
         editorCommand(
-            "completr-open-suggestion-popup",
+            OPEN_POPUP_COMMAND,
             "Open suggestion popup",
             [{ modifiers: ["Mod"], key: " " }],
             () => true,
@@ -127,13 +117,13 @@ export function registerCommands(plugin: CompletrPlugin) {
             (editor) => bypassPopup(plugin, editor, "Tab"),
         ),
         editorCommand(
-            "completr-blacklist-current-word",
+            BLACKLIST_COMMAND,
             "Add the selected suggestion to the blacklist",
             [{ modifiers: ["Mod", "Shift"], key: "D" }],
             isFocused,
             () => {
                 const item = popup.getSelectedItem();
-                if (item) void plugin.blacklistSuggestion(item.displayName);
+                if (item) void popup.hideSuggestion(item);
             },
         ),
         // In vim mode, Escape should also leave insert mode. The keymap below closes the popup and passes the key on.
@@ -158,22 +148,40 @@ export function registerCommands(plugin: CompletrPlugin) {
     plugin.addCommand({
         id: "completr-toggle-auto-trigger",
         name: "Toggle automatic popup",
-        callback: async () => {
+        callback: guarded(async () => {
             plugin.settings.autoTrigger = !plugin.settings.autoTrigger;
             await plugin.saveSettings();
             new Notice(`Completr: Automatic popup ${plugin.settings.autoTrigger ? "enabled" : "disabled"}`);
+        }),
+    });
+
+    plugin.addCommand({
+        id: "completr-create-snippet-from-selection",
+        name: "Create snippet from selection",
+        editorCheckCallback: (checking, editor) => {
+            const selection = editor.getSelection();
+            if (!selection.trim()) return false;
+            if (!checking)
+                new CustomEntryModal(plugin.app, plugin.snippets.customEntries, {
+                    draft: { replacement: selection },
+                }).open();
+            return true;
         },
+    });
+
+    plugin.addCommand({
+        id: "completr-scan-vault",
+        name: "Learn the words of all notes",
+        callback: guarded(() => plugin.scanVault()),
     });
 
     // See (3) above
     popup.scope.register(null, null, (evt, ctx) => {
         const editor = plugin.app.workspace.activeEditor?.editor;
         if (!editor) return;
-        const { hotkeyManager } = plugin.app;
         for (const command of commands) {
             if (evt.repeat && !command.repeatable) continue;
-            const hotkeys = hotkeyManager.getHotkeys(command.id) ?? hotkeyManager.getDefaultHotkeys(command.id) ?? [];
-            if (!hotkeys.some((h) => isHotkeyMatch(h, ctx))) continue;
+            if (!getHotkeys(plugin.app, command.id).some((h) => isHotkeyMatch(h, ctx))) continue;
             // Runs the command if it is applicable, otherwise try the next one
             if (command.editorCheckCallback(false, editor)) return false;
         }

@@ -5,6 +5,13 @@ import type { Obsidian } from "../harness/obsidian.ts";
 
 interface WordIndexLike {
     has(word: string): boolean;
+    delete(word: string): boolean;
+}
+
+/** The private word indices of the file scanner. */
+interface ScannerInternals {
+    index: WordIndexLike;
+    currentFileIndex: WordIndexLike;
 }
 
 /** Writes a word list into the plugin's `wordLists` folder and reloads all word lists. */
@@ -12,7 +19,7 @@ export async function setWordList(obsidian: Obsidian, name: string, words: strin
     await obsidian.eval(
         async (name: string, content: string) => {
             const plugin = app.plugins.plugins["obsidian-completr"]!;
-            await plugin.wordList.getFilePaths(); // creates the folder
+            await plugin.wordList.getFileNames(); // creates the folder
             await plugin.files.write("wordLists/" + name, content);
             await plugin.wordList.load(plugin.settings);
         },
@@ -33,20 +40,31 @@ export async function removeWordLists(obsidian: Obsidian, ...names: string[]) {
 /** Whether the file scanner knows the word (vault wide index). */
 export function isScanned(obsidian: Obsidian, word: string): Promise<boolean> {
     return obsidian.eval((word: string) => {
-        const scanner = app.plugins.plugins["obsidian-completr"]!.fileScanner as unknown as { index: WordIndexLike };
+        const scanner = app.plugins.plugins["obsidian-completr"]!.fileScanner as unknown as ScannerInternals;
         return scanner.index.has(word);
     }, word);
+}
+
+/** Number of words the file scanner knows. */
+export function scannedWordCount(obsidian: Obsidian): Promise<number> {
+    return obsidian.eval(() => app.plugins.plugins["obsidian-completr"]!.fileScanner.wordCount);
 }
 
 export function waitForScanned(obsidian: Obsidian, word: string, timeout = 3_000) {
     return obsidian.waitFor(() => isScanned(obsidian, word), { timeout, what: `"${word}" to be scanned` });
 }
 
-/** Forgets the given scanned words, so tests don't influence each other. */
+/**
+ * Forgets the given scanned words, so tests don't influence each other. The plugin itself can only forget all words,
+ * which would also drop the ones other test files rely on, so this reaches into the scanner's indices.
+ */
 export async function forgetScannedWords(obsidian: Obsidian, words: string[]) {
     await obsidian.eval((words: string[]) => {
-        const plugin = app.plugins.plugins["obsidian-completr"]!;
-        for (const w of words) plugin.fileScanner.removeWord(w);
+        const scanner = app.plugins.plugins["obsidian-completr"]!.fileScanner as unknown as ScannerInternals;
+        for (const w of words) {
+            scanner.index.delete(w);
+            scanner.currentFileIndex.delete(w);
+        }
     }, words);
 }
 
@@ -66,6 +84,8 @@ export interface RenderedItem {
     iconClass: string | null;
     /** Value of the `--completr-suggestion-color` property of the item. */
     color: string;
+    /** The muted text next to the name (what a snippet inserts), null if there is none. */
+    detail: string | null;
 }
 
 /** Details of the rendered popup items. */
@@ -81,9 +101,26 @@ export function renderedItems(obsidian: Obsidian): Promise<RenderedItem[]> {
                     ),
                     iconClass: el.querySelector(".completr-suggestion-icon svg")?.getAttribute("class") ?? null,
                     color: el.style.getPropertyValue("--completr-suggestion-color"),
+                    detail: el.querySelector(".completr-suggestion-detail")?.textContent ?? null,
                 };
             },
         ),
+    );
+}
+
+/**
+ * Creates (or overwrites) a file through the vault without opening it, so Obsidian knows about it right away. Files
+ * written through the adapter only show up once the file watcher noticed them.
+ */
+export async function createVaultFile(obsidian: Obsidian, path: string, content: string) {
+    await obsidian.eval(
+        async (path: string, content: string) => {
+            const existing = app.vault.getFileByPath(path);
+            if (existing) await app.vault.modify(existing, content);
+            else await app.vault.create(path, content);
+        },
+        path,
+        content,
     );
 }
 

@@ -1,7 +1,7 @@
 import { finishRenderMath, loadMathJax, renderMath } from "obsidian";
 
 /**
- * Renders LaTeX suggestions (e.g. `\alpha`) with MathJax for the popup. Results are cached, and rendering happens in
+ * Renders LaTeX (e.g. `\alpha`) with MathJax for the popup. Results are cached, and rendering happens in
  * small batches after the popup was drawn, so a full popup never blocks typing.
  */
 
@@ -13,18 +13,11 @@ const queue: { tex: string; target: HTMLElement }[] = [];
 let mathJax: Promise<void> | null = null;
 let scheduled = false;
 
-/** The TeX source to preview for a suggestion, null if it shouldn't be previewed. */
-export function toPreviewTex(displayName: string): string | null {
-    if (displayName.startsWith("\\begin{") || !displayName.startsWith("\\")) return null;
-    // Placeholders become boxes, like in a template
-    return displayName.replaceAll("#", "\\square").replaceAll("~", "");
-}
-
 function render(tex: string): HTMLElement | null {
     try {
         const el = renderMath(tex, false);
-        // MathJax renders errors inline instead of throwing
-        if (el.querySelector("mjx-merror, [data-mjx-error]")) return null;
+        // MathJax renders errors inline instead of throwing, and unknown commands as red text
+        if (el.querySelector('mjx-merror, [data-mjx-error], [style*="color: red"], [mathcolor="red"]')) return null;
         return el;
     } catch {
         return null;
@@ -37,8 +30,15 @@ function attach(target: HTMLElement, preview: HTMLElement | null) {
 
 async function flush() {
     scheduled = false;
-    mathJax ??= loadMathJax();
-    await mathJax;
+    try {
+        await (mathJax ??= loadMathJax());
+    } catch (e) {
+        // Try again with the next popup
+        mathJax = null;
+        queue.length = 0;
+        console.warn("Completr: Unable to load MathJax", e);
+        return;
+    }
 
     const batch = queue.splice(0, BATCH_SIZE);
     let rendered = false;
@@ -64,11 +64,8 @@ function schedule() {
     window.setTimeout(() => void flush(), 0);
 }
 
-/** Appends the rendered preview of `displayName` to `target`, now if cached, otherwise soon. */
-export function renderLatexPreview(target: HTMLElement, displayName: string) {
-    const tex = toPreviewTex(displayName);
-    if (tex === null) return;
-
+/** Appends the rendered `tex` to `target`, now if cached, otherwise soon. */
+export function renderLatexPreview(target: HTMLElement, tex: string) {
     const cached = cache.get(tex);
     if (cached !== undefined) {
         attach(target, cached);

@@ -30,19 +30,53 @@ export class DataFiles {
         if (await this.adapter.exists(path)) await this.adapter.remove(path);
     }
 
-    /** Lists the files in a sub folder (creating it if necessary). Returns vault relative paths. */
+    /**
+     * Lists the files in a sub folder. The folder is created if it is missing, so users find it where the documentation
+     * says it is. Returns names like the other methods take them, e.g. `wordLists/english.txt`.
+     */
     async list(folder: string): Promise<string[]> {
         const path = this.path(folder);
         if (!(await this.adapter.exists(path))) await this.adapter.mkdir(path);
-        return (await this.adapter.list(path)).files;
+        const prefix = this.folder + "/";
+        return (await this.adapter.list(path)).files.map((f) =>
+            f.startsWith(prefix) ? f.substring(prefix.length) : f,
+        );
+    }
+}
+
+/** Writes changes to disk at most once per `delay`, instead of on every change. */
+export class DebouncedSaver {
+    private timer: number | null = null;
+    private dirty = false;
+
+    constructor(
+        private readonly save: () => Promise<void>,
+        private readonly delay: number,
+    ) {}
+
+    /** Marks the data as changed. It is saved after the delay. */
+    schedule() {
+        this.dirty = true;
+        this.timer ??= window.setTimeout(() => {
+            this.timer = null;
+            this.flush().catch((e) => console.error("Completr: Unable to save", e));
+        }, this.delay);
     }
 
-    readPath(vaultPath: string): Promise<string> {
-        return this.adapter.read(vaultPath);
-    }
-
-    removePath(vaultPath: string): Promise<void> {
-        return this.adapter.remove(vaultPath);
+    /** Saves now, if there are unsaved changes. A failed save is retried with the next one. */
+    async flush() {
+        if (this.timer !== null) {
+            window.clearTimeout(this.timer);
+            this.timer = null;
+        }
+        if (!this.dirty) return;
+        this.dirty = false;
+        try {
+            await this.save();
+        } catch (e) {
+            this.dirty = true;
+            throw e;
+        }
     }
 }
 

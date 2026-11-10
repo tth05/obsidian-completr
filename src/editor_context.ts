@@ -57,8 +57,12 @@ export function getCursorContext(state: EditorState, pos: number): CursorContext
  * Determines whether LaTeX suggestions should be shown at `pos` and whether newlines are allowed (block).
  * @param triggerInCode whether a dollar sign inside code should count as math (e.g. `$\fr`).
  */
-export function getLatexContext(state: EditorState, pos: number, triggerInCode: boolean): MathType | null {
-    const ctx = getCursorContext(state, pos);
+export function getLatexContext(
+    state: EditorState,
+    pos: number,
+    triggerInCode: boolean,
+    ctx = getCursorContext(state, pos),
+): MathType | null {
     if (ctx.math) return ctx.math;
 
     if (ctx.inCode && !triggerInCode) return null;

@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { EditorSelection, EditorState, type TransactionSpec } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import {
-    clearSnippets,
     hasActiveSnippet,
     insertSnippet,
     isInPlaceholder,
@@ -396,17 +395,6 @@ describe("snippet state", () => {
         expect(isInPlaceholder(v.state)).toBe(true);
         v.jump();
         expect(v.cursor).toBe(9);
-    });
-
-    test("clearSnippets", () => {
-        const v = new FakeView("");
-        v.insert(0, 0, "\\frac{#}{#}");
-        clearSnippets(v.view);
-        expect(hasActiveSnippet(v.state)).toBe(false);
-        expect(v.highlights).toEqual([]);
-        const before = v.dispatches;
-        clearSnippets(v.view);
-        expect(v.dispatches).toBe(before);
     });
 
     test("multi-line snippets continue block quotes and lists", () => {

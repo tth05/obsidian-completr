@@ -4,8 +4,27 @@ import type { DataFiles } from "../data_files.ts";
 export interface CustomEntry {
     /** Shown in the popup and matched against what is typed. */
     displayName: string;
-    /** Inserted text. "#" marks placeholders, "~" the final cursor position. */
+    /** Inserted text, with placeholders in the syntax of the provider (see `SnippetSyntax`). */
     replacement: string;
+}
+
+/** How a kind of custom entries is called and explained in the UI. */
+export interface CustomEntryKind {
+    /** Title of the list, e.g. "Snippets". */
+    title: string;
+    /** One and several entries, e.g. ["snippet", "snippets"]. */
+    noun: [singular: string, plural: string];
+    /** Shown below the count in the settings. */
+    description: string;
+    /** Title of the dialog for a new entry, also the label of the button that opens it. */
+    addTitle: string;
+    editTitle: string;
+    namePlaceholder: string;
+    replacementPlaceholder: string;
+    /** Explains the placeholder syntax of the replacement. */
+    syntaxHelp: string;
+    /** If false, the name defaults to the replacement. */
+    nameRequired: boolean;
 }
 
 /** Parses a JSON array of strings (display name = replacement) or {displayName, replacement} objects. */
@@ -42,13 +61,32 @@ export class CustomEntryFile {
     /** Set if the file couldn't be parsed. It is backed up before being overwritten. */
     private loadError: string | null = null;
 
+    /** @param onChange called whenever the entries were loaded or changed. */
     constructor(
         private readonly files: DataFiles,
         readonly fileName: string,
+        readonly kind: CustomEntryKind,
+        private readonly onChange: () => void = () => {},
     ) {}
 
     get entries(): readonly CustomEntry[] {
         return this.items;
+    }
+
+    /** Why the file couldn't be loaded, null if it is fine. */
+    get error(): string | null {
+        return this.loadError;
+    }
+
+    /** Vault relative path of the file. */
+    get path(): string {
+        return this.files.path(this.fileName);
+    }
+
+    /** E.g. "1 snippet", "3 snippets". */
+    get countLabel(): string {
+        const count = this.items.length;
+        return `${count} ${this.kind.noun[count === 1 ? 0 : 1]}`;
     }
 
     /** Loads the file, creating it if missing. Returns an error message if it is invalid. */
@@ -58,15 +96,15 @@ export class CustomEntryFile {
         if (contents === null) {
             this.items = [];
             await this.files.write(this.fileName, "[]");
-            return null;
+        } else {
+            try {
+                this.items = parseCustomEntries(contents);
+            } catch (e) {
+                this.items = [];
+                this.loadError = `Failed to load ${this.fileName}: ${(e as Error).message}`;
+            }
         }
-
-        try {
-            this.items = parseCustomEntries(contents);
-        } catch (e) {
-            this.items = [];
-            this.loadError = `Failed to load ${this.fileName}: ${(e as Error).message}`;
-        }
+        this.onChange();
         return this.loadError;
     }
 
@@ -78,6 +116,21 @@ export class CustomEntryFile {
             this.loadError = null;
         }
         this.items = entries;
+        this.onChange();
         await this.files.write(this.fileName, serializeCustomEntries(entries));
+    }
+
+    add(entry: CustomEntry): Promise<void> {
+        return this.set([...this.items, entry]);
+    }
+
+    /** Replaces `old` (one of {@link entries}) with `entry`. If `old` is gone by now, `entry` is added. */
+    replace(old: CustomEntry, entry: CustomEntry): Promise<void> {
+        if (!this.items.includes(old)) return this.add(entry);
+        return this.set(this.items.map((e) => (e === old ? entry : e)));
+    }
+
+    remove(entry: CustomEntry): Promise<void> {
+        return this.set(this.items.filter((e) => e !== entry));
     }
 }

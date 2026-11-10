@@ -11,15 +11,26 @@ export const LEGACY_CHARACTER_REGEX = "a-zA-ZöäüÖÄÜß";
  * Compiles the user supplied character class content (e.g. `a-zA-Z`) into a regex matching a single character.
  * Returns null if it is invalid.
  */
-export function compileCharacterClass(characterClass: string, flags = "u"): RegExp | null {
+export function compileCharacterClass(characterClass: string): RegExp | null {
     try {
-        return new RegExp("[" + characterClass + "]", flags);
+        return new RegExp("[" + characterClass + "]", "u");
     } catch {
         return null;
     }
 }
 
-export interface WordMatch {
+let wordCharRegex: { characterClass: string; regex: RegExp } | null = null;
+
+/** Whether `char` is part of a word according to the user's character class. An invalid class uses the default. */
+export function isWordChar(char: string, characterClass: string): boolean {
+    if (wordCharRegex?.characterClass !== characterClass) {
+        const regex = compileCharacterClass(characterClass) ?? compileCharacterClass(DEFAULT_CHARACTER_REGEX)!;
+        wordCharRegex = { characterClass, regex };
+    }
+    return wordCharRegex.regex.test(char);
+}
+
+export interface WordBeforeCursor {
     /** The word directly in front of the given position. */
     query: string;
     /** The character in front of the word, null if the word starts at the beginning of the line or the look back limit. */
@@ -34,7 +45,7 @@ export function matchWordBackwards(
     ch: number,
     isWordChar: (char: string) => boolean,
     maxLookBackDistance = 50,
-): WordMatch {
+): WordBeforeCursor {
     const limit = Math.max(0, ch - maxLookBackDistance);
     let start = Math.min(ch, line.length);
     while (start > limit) {
@@ -55,7 +66,7 @@ export function matchWordBackwards(
 }
 
 // Only the "Combining Diacritical Marks" block. Other marks (e.g. Devanagari vowel signs) are essential to the script.
-const DIACRITICS_REGEX = /[̀-ͯ]/g;
+const DIACRITICS_REGEX = /[\u0300-\u036f]/g;
 
 /** Removes diacritics after decomposition, e.g. "Hèllò" -> "Hello". */
 export function removeDiacritics(str: string): string {
@@ -88,6 +99,15 @@ export function applyTypedCasing(typed: string, word: string): string {
         result += isUpper ? w.toUpperCase() : isLower ? w.toLowerCase() : w;
     }
     return result;
+}
+
+/** The first non-empty lines of a text in one line, e.g. to show what a snippet inserts. */
+export function summarize(text: string, maxLines = 1): string {
+    const lines = text
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+    return lines.slice(0, maxLines).join(" ⏎ ") + (lines.length > maxLines ? " …" : "");
 }
 
 export interface FrontMatterBounds {

@@ -1,4 +1,4 @@
-import { DEFAULT_CHARACTER_REGEX, LEGACY_CHARACTER_REGEX } from "./text.ts";
+import { compileCharacterClass, DEFAULT_CHARACTER_REGEX, LEGACY_CHARACTER_REGEX } from "./text.ts";
 
 export enum WordInsertionMode {
     MATCH_CASE_REPLACE = "Match-Case & Replace",
@@ -151,6 +151,10 @@ export function loadSettings(data: unknown): { settings: CompletrSettings; migra
     if (version < 2) {
         // v4.0.0: Unicode aware default word characters
         if (saved.characterRegex === LEGACY_CHARACTER_REGEX) settings.characterRegex = DEFAULT_CHARACTER_REGEX;
+    }
+    // An empty class compiles, but matches nothing
+    if (settings.characterRegex.length === 0 || !compileCharacterClass(settings.characterRegex)) {
+        settings.characterRegex = DEFAULT_CHARACTER_REGEX;
     }
     settings.settingsVersion = SETTINGS_VERSION;
 

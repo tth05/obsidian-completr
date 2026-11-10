@@ -14,7 +14,7 @@ const BUILT_IN_LIST_KEYS = ["tags", "aliases", "cssclasses"];
 
 const FRONT_MATTER_SNIPPET = suggestion("front-matter", "---\n~\n---", {
     overrideStart: { line: 0, ch: 0 },
-    isSnippet: true,
+    snippet: "latex",
 });
 
 /** Turns a front matter value into the strings that can be suggested. Objects are ignored. */
@@ -109,7 +109,7 @@ export class FrontMatterProvider implements SuggestionProvider {
         for (const info of this.getKeys().values()) {
             if (!maybeLowerCase(info.key, ignoreCase).startsWith(query)) continue;
             const s = (display: string, replacement: string) =>
-                suggestion(display, replacement, { overrideStart: start, isSnippet: true });
+                suggestion(display, replacement, { overrideStart: start, snippet: "latex" });
             if (info.isList)
                 result.push(s(info.key + ": [#]", info.key + ": [~]"), s(info.key + ": \\...", info.key + ":\n- ~"));
             else result.push(s(info.key + ": #", info.key + ": ~"));

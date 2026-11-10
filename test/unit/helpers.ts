@@ -2,10 +2,11 @@
  * Shared fakes for the unit tests.
  */
 import { afterAll, afterEach, beforeAll, spyOn } from "bun:test";
-import type { DataAdapter, EditorPosition } from "obsidian";
+import { type DataAdapter, type EditorPosition, Notice } from "obsidian";
 import { DataFiles } from "../../src/data_files.ts";
 import type { SuggestionContext } from "../../src/provider/provider.ts";
 import { type CompletrSettings, DEFAULT_SETTINGS } from "../../src/settings.ts";
+import { isWordChar, matchWordBackwards } from "../../src/text.ts";
 
 export const PLUGIN_FOLDER = ".obsidian/plugins/obsidian-completr";
 
@@ -24,6 +25,8 @@ export class FakeAdapter {
     readonly writes: [string, string][] = [];
     /** Paths for which read() rejects. */
     readonly failingReads = new Set<string>();
+    /** Paths for which write() rejects, leaving the file as it is. */
+    readonly failingWrites = new Set<string>();
 
     exists(path: string): Promise<boolean> {
         return Promise.resolve(this.files.has(path) || this.folders.has(path));
@@ -37,6 +40,7 @@ export class FakeAdapter {
     }
 
     write(path: string, content: string): Promise<void> {
+        if (this.failingWrites.has(path)) return Promise.reject(new Error("ENOSPC: " + path));
         this.files.set(path, content);
         this.writes.push([path, content]);
         return Promise.resolve();
@@ -67,7 +71,10 @@ export function makeDataFiles(adapter = new FakeAdapter()): { files: DataFiles; 
 /** Vault relative path of a file in the plugin folder. */
 export const pluginPath = (name: string) => PLUGIN_FOLDER + "/" + name;
 
-/** A minimal suggestion context for providers that only look at the query and flags. */
+/**
+ * A minimal suggestion context for providers that only look at the query and flags. The cursor is outside of code and
+ * math unless overridden, e.g. `makeContext("fr", { mathType: () => "inline" })`.
+ */
 export function makeContext(query: string, overrides: Partial<SuggestionContext> = {}): SuggestionContext {
     const line = overrides.line ?? query;
     const end: EditorPosition = overrides.end ?? { line: 0, ch: line.length };
@@ -77,13 +84,38 @@ export function makeContext(query: string, overrides: Partial<SuggestionContext>
         line,
         manual: false,
         inCode: false,
-        start: { line: end.line, ch: end.ch - query.length },
+        mathType: () => null,
         end,
-        file: null,
         editor: undefined as never,
         state: undefined as never,
         ...overrides,
     };
+}
+
+/**
+ * The context the popup builds for a cursor position: `text` is the cursor's line with `|` marking the cursor. Query
+ * and separator are the word in front of the cursor, like in the popup.
+ */
+export function makeContextAt(
+    text: string,
+    overrides: Partial<SuggestionContext> = {},
+    settings: CompletrSettings = DEFAULT_SETTINGS,
+): SuggestionContext {
+    const ch = text.indexOf("|");
+    if (ch === -1) throw new Error("No cursor marker in: " + text);
+    const line = text.substring(0, ch) + text.substring(ch + 1);
+    const { query, separatorChar } = matchWordBackwards(
+        line,
+        ch,
+        (c) => isWordChar(c, settings.characterRegex),
+        settings.maxLookBackDistance,
+    );
+    return makeContext(query, { separatorChar, line, end: { line: 0, ch }, ...overrides });
+}
+
+/** The messages of all notices shown so far (see the `Notice` stand-in in preload.ts). */
+export function noticeMessages(): string[] {
+    return (Notice as unknown as { messages: string[] }).messages;
 }
 
 /**

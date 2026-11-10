@@ -270,6 +270,125 @@ describe("WordIndex", () => {
         });
     });
 
+    describe("addAll", () => {
+        const allOptions: SearchOptions[] = [
+            opts,
+            caseSensitive,
+            noDiacritics,
+            fuzzy,
+            { ignoreCase: false, ignoreDiacritics: true, fuzzy: true },
+        ];
+        const queries = ["", "a", "al", "AL", "äl", "alx", "be", "bé", "c", "ca", "çax1", "ax", "bx2", "zz"];
+
+        /** Distinct pseudo words in a shuffled order, with mixed case and diacritics. */
+        function makeWords(count: number, tag: string): string[] {
+            const starts = ["al", "Al", "äl", "AL", "be", "Bé", "ca", "ça", "Ĉa", "de"];
+            // 7919 is prime, so this visits every number below `count` exactly once
+            return Array.from(
+                { length: count },
+                (_, i) => starts[i % starts.length] + tag + ((i * 7919) % count).toString(36),
+            );
+        }
+
+        const searchAll = (index: WordIndex) =>
+            allOptions.map((options) => queries.map((query) => index.search(query, options)));
+
+        test("returns the number of new words", () => {
+            const index = indexOf("a", "b");
+            expect(index.addAll(["b", "c", "d"])).toBe(2);
+            expect(index.size).toBe(4);
+            expect(index.addAll(["a", "b", "c", "d"])).toBe(0);
+            expect(index.addAll([])).toBe(0);
+            expect(index.size).toBe(4);
+        });
+
+        test("duplicates within the batch are added once", () => {
+            const index = new WordIndex();
+            expect(index.addAll(["x", "y", "x", "X", "y"])).toBe(3);
+            expect(words(index, "")).toEqual(["x", "X", "y"]);
+        });
+
+        test("empty strings are skipped", () => {
+            const index = new WordIndex();
+            expect(index.addAll(["", "a", ""])).toBe(1);
+            expect(index.addAll([""])).toBe(0);
+            expect(index.has("")).toBe(false);
+            expect(index.size).toBe(1);
+        });
+
+        test("accepts any iterable", () => {
+            const index = new WordIndex();
+            expect(index.addAll(new Set(["a", "b"]))).toBe(2);
+            expect(index.addAll(indexOf("b", "c").values())).toBe(1);
+            expect(words(index, "")).toEqual(["a", "b", "c"]);
+        });
+
+        test("works before any view exists", () => {
+            const index = new WordIndex();
+            index.addAll(["beta", "Alpha"]);
+            expect(words(index, "")).toEqual(["Alpha", "beta"]);
+        });
+
+        test("new words are inserted in every existing view", () => {
+            const index = indexOf("beta", "Delta");
+            for (const options of [opts, caseSensitive, noDiacritics]) words(index, "", options);
+
+            expect(index.addAll(["alpha", "Ćharlie", "gamma", "beta"])).toBe(3);
+            expect(words(index, "", opts)).toEqual(["alpha", "beta", "Delta", "gamma", "Ćharlie"]);
+            expect(words(index, "", caseSensitive)).toEqual(["Delta", "alpha", "beta", "gamma", "Ćharlie"]);
+            expect(words(index, "", noDiacritics)).toEqual(["alpha", "beta", "Ćharlie", "Delta", "gamma"]);
+        });
+
+        // Up to 256 new words are inserted into the views, more than that drops them
+        test.each([1, 50, 255, 256, 257, 258, 1000])(
+            "adding %p words to built views finds the same as adding them one by one",
+            (count) => {
+                const existing = makeWords(40, "x");
+                const fresh = makeWords(count, "y");
+                // Known words, empty strings and repeated words don't count
+                const batch = [...fresh, "", ...existing.slice(0, 5), ...fresh.slice(0, 3)];
+
+                const oneByOne = indexOf(...existing);
+                const atOnce = indexOf(...existing);
+                searchAll(oneByOne);
+                searchAll(atOnce);
+
+                let added = 0;
+                for (const word of batch) if (oneByOne.add(word)) added++;
+                expect(added).toBe(count);
+                expect(atOnce.addAll(batch)).toBe(count);
+
+                expect(atOnce.size).toBe(oneByOne.size);
+                expect(searchAll(atOnce)).toEqual(searchAll(oneByOne));
+                // Also the same as an index that never had a view
+                expect(searchAll(atOnce)).toEqual(searchAll(indexOf(...existing, ...batch)));
+            },
+        );
+
+        test.each([200, 300])("the index stays consistent after a batch of %p words", (count) => {
+            const index = indexOf("alpha", "beta");
+            words(index, "");
+            const batch = makeWords(count, "y");
+            index.addAll(batch);
+
+            expect(index.delete(batch[0])).toBe(true);
+            expect(index.add("Alpaca")).toBe(true);
+            expect(index.addAll(["alpine", "Alpaca"])).toBe(1);
+
+            const expected = indexOf("alpha", "beta", ...batch.slice(1), "Alpaca", "alpine");
+            expect(searchAll(index)).toEqual(searchAll(expected));
+            expect(words(index, "alp")).toEqual(["Alpaca", "alpha", "alpine"]);
+        });
+
+        test("a batch of known words keeps the views", () => {
+            const known = makeWords(300, "x");
+            const index = indexOf(...known);
+            const before = searchAll(index);
+            expect(index.addAll(known)).toBe(0);
+            expect(searchAll(index)).toEqual(before);
+        });
+    });
+
     describe("fuzzy search", () => {
         test("prefix matches come first, then fuzzy matches", () => {
             const index = indexOf("markdown", "mkdir", "milk", "mkdocs");
