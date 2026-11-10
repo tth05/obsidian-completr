@@ -150,6 +150,15 @@ export default class CompletrSettingsTab extends PluginSettingTab {
         );
         this.toggle(
             group,
+            "inlineSuggestions",
+            "Inline suggestions",
+            "Show the best suggestion as grey text after the cursor while typing. Tab inserts it, Escape hides it. While the popup is open, it shows the selected suggestion.",
+            () => {
+                if (!this.settings.inlineSuggestions) this.plugin.inlineSuggestions.dismissAll();
+            },
+        );
+        this.toggle(
+            group,
             "autoFocus",
             "Select first suggestion",
             "Select the first suggestion when the popup opens, so Enter inserts it. Otherwise Enter starts a new line until a suggestion is selected with the arrow keys.",

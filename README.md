@@ -14,6 +14,7 @@ Advanced auto-completion for Obsidian: LaTeX, front matter, callouts and regular
     - Rendered preview of each command in the popup
     - Add your own commands in the settings
 - **Snippets**: your own text templates, e.g. a meeting note header, with placeholders to jump through
+- **Inline suggestions** (optional): the best suggestion in grey after the cursor, `Tab` inserts it
 - **Words**
     - Learns the words of your notes while you write, or scans the whole vault
     - Word lists: import files with one word per line. Fast, even with millions of words
@@ -47,6 +48,7 @@ All keys are commands, change them under *Settings -> Hotkeys* (filter for "Comp
 | Add selected to the blacklist    | `Ctrl/Cmd + Shift + D`  |
 | Bypass the popup, press Enter    | `Ctrl + Enter`          |
 | Bypass the popup, press Tab      | `Ctrl + Tab`            |
+| Accept inline suggestion         | - (`Tab` always works)  |
 | Toggle automatic popup           | -                       |
 | Create snippet from selection    | -                       |
 | Learn the words of all notes     | -                       |
@@ -58,6 +60,16 @@ All keys are commands, change them under *Settings -> Hotkeys* (filter for "Comp
 - If *Select first suggestion* is disabled, `Enter` creates a new line until you pick a suggestion with the arrow keys.
 - In vim mode, `Escape` closes the popup and leaves insert mode.
 - A popup opened with `Ctrl/Cmd + Space` ignores the minimum typed length for the word it was opened on.
+
+### Inline suggestions
+
+Off by default, enable *Inline suggestions* in the settings. While you type, the rest of the best suggestion appears
+in grey after the cursor, and `Tab` inserts it. `Escape` hides it until you type the next character. It works with or
+without the popup: while the popup is open, it shows the selected suggestion, so `Tab` and the popup agree.
+
+Only suggestions that continue exactly what you typed are shown (`hel` -> `hello`, not `Hello`), and none in the middle
+of a word. To accept with another key, e.g. `ArrowRight`, assign it to the *Accept inline suggestion* command. That
+key keeps working normally while nothing is shown.
 
 ### Blacklist
 

@@ -65,11 +65,12 @@ function bypassPopup(plugin: CompletrPlugin, editor: Editor, key: "Enter" | "Tab
     );
 }
 
+const isVimMode = (plugin: CompletrPlugin) => !!plugin.app.vault.getConfig("vimMode");
+
 export function registerCommands(plugin: CompletrPlugin) {
-    const { popup } = plugin;
+    const { popup, inlineSuggestions } = plugin;
     const isOpen = () => popup.isOpen;
     const isFocused = () => popup.isFocused();
-    const isVimMode = () => !!plugin.app.vault.getConfig("vimMode");
 
     const commands: CompletrCommand[] = [
         editorCommand(
@@ -131,8 +132,16 @@ export function registerCommands(plugin: CompletrPlugin) {
             "completr-close-suggestion-popup",
             "Close suggestion popup",
             [{ modifiers: [], key: "Escape" }],
-            () => isOpen() && !isVimMode(),
+            () => isOpen() && !isVimMode(plugin),
             () => popup.close(),
+        ),
+        // Tab accepts it as well (see createKeymap), this lets users add a key like ArrowRight
+        editorCommand(
+            "completr-accept-inline-suggestion",
+            "Accept inline suggestion",
+            [],
+            (editor) => inlineSuggestions.get(editor.cm) !== null,
+            (editor) => inlineSuggestions.accept(editor.cm),
         ),
         editorCommand(
             "completr-jump-to-next-snippet-placeholder",
@@ -203,12 +212,34 @@ export function registerCommands(plugin: CompletrPlugin) {
     );
 }
 
-/** See (2) above. Also implements the optional "Tab inserts/jumps" settings, which can't be expressed as hotkeys. */
+/**
+ * See (2) above. Also implements Tab and Escape for inline suggestions and the optional "Tab inserts/jumps" settings,
+ * which can't be expressed as hotkeys.
+ */
 export function createKeymap(plugin: CompletrPlugin) {
-    const { popup } = plugin;
+    const { popup, inlineSuggestions } = plugin;
     const passThrough = () => {
         if (popup.isOpen) popup.close();
         return false;
+    };
+
+    const tab = (view: EditorView) => {
+        const { settings } = plugin;
+        if (settings.insertWithTab && popup.isFocused()) {
+            popup.applySelectedItem();
+            return true;
+        }
+        if (inlineSuggestions.accept(view)) return true;
+        if (settings.jumpWithTab && !popup.isOpen && isInPlaceholder(view.state)) {
+            jumpToNextPlaceholder(view);
+            return true;
+        }
+        return false;
+    };
+    const escape = (view: EditorView) => {
+        if (!inlineSuggestions.dismiss(view)) return false;
+        // Closing the popup and leaving vim's insert mode still need the key
+        return !popup.isOpen && !isVimMode(plugin);
     };
 
     return [
@@ -221,19 +252,15 @@ export function createKeymap(plugin: CompletrPlugin) {
                 { key: "Tab", run: passThrough },
             ]),
         ),
-        // The optional Tab actions run as a keydown handler: plugins like LaTeX Suite handle Tab in their own keydown
-        // handlers, which CodeMirror runs before any keymap.
+        // Tab and Escape run as a keydown handler: plugins like LaTeX Suite handle Tab in their own keydown handlers,
+        // which CodeMirror runs before any keymap.
         Prec.highest(
             EditorView.domEventHandlers({
                 keydown: (evt, view) => {
-                    if (evt.key !== "Tab" || evt.shiftKey || evt.ctrlKey || evt.altKey || evt.metaKey) return false;
-                    const { settings } = plugin;
-                    if (settings.insertWithTab && popup.isFocused()) popup.applySelectedItem();
-                    else if (settings.jumpWithTab && !popup.isOpen && isInPlaceholder(view.state))
-                        jumpToNextPlaceholder(view);
-                    else return false;
-                    evt.preventDefault();
-                    return true;
+                    if (evt.shiftKey || evt.ctrlKey || evt.altKey || evt.metaKey) return false;
+                    const handled = evt.key === "Tab" ? tab(view) : evt.key === "Escape" ? escape(view) : false;
+                    if (handled) evt.preventDefault();
+                    return handled;
                 },
             }),
         ),

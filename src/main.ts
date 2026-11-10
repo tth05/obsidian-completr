@@ -1,7 +1,8 @@
 import { EditorView } from "@codemirror/view";
-import { debounce, type Editor, Notice, Plugin, TFile } from "obsidian";
+import { type Editor, Notice, Plugin, TFile } from "obsidian";
 import { DataFiles } from "./data_files.ts";
 import { reportError } from "./errors.ts";
+import { InlineSuggestions } from "./inline_suggestions.ts";
 import { createKeymap, registerCommands } from "./keybindings.ts";
 import { SuggestionPopup } from "./popup.ts";
 import { SuggestionBlacklist } from "./provider/blacklist.ts";
@@ -37,6 +38,7 @@ export default class CompletrPlugin extends Plugin {
     providers!: SuggestionProvider[];
 
     popup!: SuggestionPopup;
+    inlineSuggestions!: InlineSuggestions;
     /** Resolves once all data files are loaded. */
     loaded!: Promise<void>;
 
@@ -59,10 +61,12 @@ export default class CompletrPlugin extends Plugin {
         this.wordList = new WordListProvider(this.files);
         this.providers = [this.frontMatter, this.callout, this.snippets, this.latex, this.fileScanner, this.wordList];
 
+        this.inlineSuggestions = new InlineSuggestions(this);
         this.popup = new SuggestionPopup(this.app, this);
         registerCommands(this);
         this.registerEditorExtension([
             snippetExtension,
+            this.inlineSuggestions.extension,
             createKeymap(this),
             EditorView.updateListener.of((update) => this.popup.onEditorUpdate(update)),
         ]);
@@ -134,8 +138,17 @@ export default class CompletrPlugin extends Plugin {
             }),
         );
 
-        const scanLater = debounce((editor: Editor) => this.scanEditor(editor, true), SCAN_DELAY_MS, true);
-        this.registerEvent(workspace.on("editor-change", (editor) => scanLater(editor)));
+        // Not Obsidian's debounce: with resetTimer, it keeps waiting for a timer of the window that was active when it
+        // started. If that was a popout window that is closed in the meantime, the timer never fires and the words
+        // of the note being edited are never learned again.
+        let scanTimer: number | undefined;
+        this.register(() => window.clearTimeout(scanTimer));
+        this.registerEvent(
+            workspace.on("editor-change", (editor) => {
+                window.clearTimeout(scanTimer);
+                scanTimer = window.setTimeout(() => this.scanEditor(editor, true), SCAN_DELAY_MS);
+            }),
+        );
     }
 
     /**

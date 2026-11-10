@@ -58,6 +58,8 @@ export abstract class DictionaryProvider implements SuggestionProvider {
     getSuggestions(context: SuggestionContext, settings: CompletrSettings): Suggestion[] {
         if (!this.isEnabled(settings)) return [];
         if (settings.disableWordsInCode && context.inCode) return [];
+        // In math, a word right after a backslash is the name of a command, inserting a plain word would make it one.
+        if (context.separatorChar === "\\" && context.mathType(settings.latexTriggerInCodeBlocks) !== null) return [];
 
         const { query } = context;
         // Manually opening the popup ignores the minimum length, an empty query then lists all words.

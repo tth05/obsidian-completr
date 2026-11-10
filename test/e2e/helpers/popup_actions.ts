@@ -43,6 +43,27 @@ export async function rowsWithVisibleActions(obsidian: Obsidian): Promise<string
     return rows.filter((r) => r.actions.some((a) => a.visibility === "visible")).map((r) => r.text);
 }
 
+export interface PopupWidth {
+    /** Width of the popup as it is. */
+    width: number;
+    /** Width of the popup if there were no action buttons at all. */
+    withoutActions: number;
+}
+
+/** Width of the open popup, with and without its action buttons. */
+export function popupWidth(obsidian: Obsidian): Promise<PopupWidth> {
+    return obsidian.eval(() => {
+        const container = document.querySelector(".suggestion-container")!;
+        const width = container.getBoundingClientRect().width;
+        const style = document.head.createEl("style", {
+            text: ".completr-suggestion-actions { display: none !important; }",
+        });
+        const withoutActions = container.getBoundingClientRect().width;
+        style.remove();
+        return { width, withoutActions };
+    });
+}
+
 function rowPoint(obsidian: Obsidian, item: string): Promise<Point> {
     return centerOf(
         obsidian,

@@ -33,6 +33,8 @@ export interface CompletrSettings {
     maxLookBackDistance: number;
     autoFocus: boolean;
     autoTrigger: boolean;
+    /** Show the rest of the best suggestion as grey text after the cursor ("ghost text"), Tab inserts it. */
+    inlineSuggestions: boolean;
     /** Tab inserts the selected suggestion (Obsidian's hotkey settings can't bind a plain Tab). */
     insertWithTab: boolean;
     /** Tab jumps to the next snippet placeholder. */
@@ -85,6 +87,7 @@ export const DEFAULT_SETTINGS: CompletrSettings = {
     maxLookBackDistance: 50,
     autoFocus: true,
     autoTrigger: true,
+    inlineSuggestions: false,
     insertWithTab: false,
     jumpWithTab: false,
     minWordLength: 2,

@@ -33,6 +33,13 @@ declare module "obsidian" {
         getConfig(key: string): unknown;
     }
 
+    interface Workspace {
+        editorSuggest?: {
+            /** The editor suggest that triggered last, e.g. Obsidian's link suggestions. */
+            currentSuggest: EditorSuggest<unknown> | null;
+        };
+    }
+
     interface Editor {
         cm: EditorView;
     }

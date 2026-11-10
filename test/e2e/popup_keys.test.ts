@@ -117,6 +117,16 @@ describe("opening and closing", () => {
         await expectText(obsidian, "Some text\nxyl<|>");
     });
 
+    test("Escape right after typing closes the popup for good", async () => {
+        await openXylPopup();
+        // Obsidian updates the popup a moment after each keystroke. Escape comes before that.
+        await obsidian.type("o");
+        await obsidian.press("Escape");
+        await waitForClosed(obsidian);
+        await obsidian.expectNoPopup();
+        await expectText(obsidian, "Some text\nxylo<|>");
+    });
+
     test("pasting a word does not open the popup", async () => {
         await openNote(obsidian, "Some text\n<|>");
         await paste(obsidian, "xyl");

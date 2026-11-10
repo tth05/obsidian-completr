@@ -1,5 +1,5 @@
-import { Transaction } from "@codemirror/state";
 import type { ViewUpdate } from "@codemirror/view";
+import { around } from "monkey-around";
 import {
     type App,
     type Editor,
@@ -13,57 +13,25 @@ import {
     setTooltip,
     type TFile,
 } from "obsidian";
-import { type CursorContext, getCursorContext, getLatexContext, type MathType } from "./editor_context.ts";
 import { guarded } from "./errors.ts";
 import { BLACKLIST_COMMAND, getHotkeyLabel } from "./hotkeys.ts";
 import { renderLatexPreview } from "./latex_preview.ts";
 import type CompletrPlugin from "./main.ts";
 import { CustomEntryModal } from "./modals.ts";
-import type { Suggestion, SuggestionContext } from "./provider/provider.ts";
+import type { Suggestion } from "./provider/provider.ts";
 import { IconMode } from "./settings.ts";
-import { insertSnippet } from "./snippets.ts";
-import { isWordChar, matchWordBackwards } from "./text.ts";
+import {
+    computeSuggestions,
+    createSuggestionContext,
+    getWordBeforeCursor,
+    insertSuggestion,
+    MAX_SUGGESTIONS,
+} from "./suggestions.ts";
+import { wasTyping } from "./typing.ts";
 
 export enum SelectionDirection {
     NEXT = 1,
     PREVIOUS = -1,
-}
-
-const MAX_SUGGESTIONS = 100;
-
-/**
- * Whether a transaction is the user typing. Besides CodeMirror's own "input.type" transactions, this accepts changes
- * without a user event that add exactly one character in front of the cursor. That's how plugins that handle typing
- * themselves insert it (e.g. LaTeX Suite replaces "\a" with "\al" when "l" is typed).
- */
-function isTyping(tr: Transaction): boolean {
-    if (tr.isUserEvent("input.type")) return true;
-    if (tr.annotation(Transaction.userEvent) !== undefined || !tr.docChanged) return false;
-
-    const before = tr.startState.selection.main;
-    const after = tr.state.selection.main;
-    if (!before.empty || !after.empty) return false;
-
-    let count = 0;
-    let typed = false;
-    tr.changes.iterChanges((fromA, toA, _fromB, toB, inserted) => {
-        count++;
-        typed =
-            toA === before.head &&
-            toB === after.head &&
-            inserted.length - (toA - fromA) === 1 &&
-            !inserted.sliceString(inserted.length - 1).includes("\n");
-    });
-    return count === 1 && typed;
-}
-
-/** Whether a transaction changes the document without changing its content (e.g. replacing "$" with "$"). */
-function isNoop(tr: Transaction): boolean {
-    let noop = true;
-    tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
-        if (noop && tr.startState.doc.sliceString(fromA, toA) !== inserted.toString()) noop = false;
-    });
-    return noop;
 }
 
 export class SuggestionPopup extends EditorSuggest<Suggestion> {
@@ -88,6 +56,20 @@ export class SuggestionPopup extends EditorSuggest<Suggestion> {
         // Remove the default key handlers (arrows, Enter, Escape, ...). Completr's commands handle these instead, so
         // their hotkeys can be configured.
         for (const handler of [...this.scope.keys]) this.scope.unregister(handler);
+
+        // The inline suggestion follows the selected item. A new list selects its first item, the arrow keys and the
+        // mouse move the selection: all of them end up here.
+        const onSelectionChanged = () => {
+            const editor = this.context?.editor;
+            if (editor) plugin.inlineSuggestions.onPopupChanged(editor.cm);
+        };
+        around(this.suggestions, {
+            setSelectedItem: (next) =>
+                function (this: unknown, ...args) {
+                    next.apply(this, args);
+                    onSelectionChanged();
+                },
+        });
     }
 
     private get settings() {
@@ -101,9 +83,14 @@ export class SuggestionPopup extends EditorSuggest<Suggestion> {
     }
 
     override close() {
+        const editor = this.isOpen ? this.context?.editor : undefined;
         super.close();
         this.focused = false;
         this.manual = false;
+        // Obsidian triggers suggests a moment after a keystroke. That trigger must not reopen the popup when it was
+        // closed in between, e.g. with Escape right after typing.
+        this.lastChangeWasTyping = false;
+        if (editor) this.plugin.inlineSuggestions.onPopupChanged(editor.cm);
     }
 
     private setFocused(focused: boolean) {
@@ -120,9 +107,9 @@ export class SuggestionPopup extends EditorSuggest<Suggestion> {
         if (!update.view.hasFocus) return;
         if (update.docChanged) {
             // Indenting, pasting, deleting, ... should not open the popup, only typing does.
-            const changes = update.transactions.filter((tr) => tr.docChanged && !isNoop(tr));
-            if (changes.length > 0) {
-                this.lastChangeWasTyping = changes.some(isTyping);
+            const typing = wasTyping(update.transactions);
+            if (typing !== null) {
+                this.lastChangeWasTyping = typing;
                 this.changedSinceManualTrigger = true;
             }
         } else if (update.selectionSet) {
@@ -149,88 +136,26 @@ export class SuggestionPopup extends EditorSuggest<Suggestion> {
     onTrigger(cursor: EditorPosition, editor: Editor): EditorSuggestTriggerInfo | null {
         if (!this.manual && !this.isOpen && !(this.settings.autoTrigger && this.lastChangeWasTyping)) return null;
 
-        const line = editor.getLine(cursor.line);
-        const { query, separatorChar } = matchWordBackwards(
-            line,
-            cursor.ch,
-            (c) => isWordChar(c, this.settings.characterRegex),
-            this.settings.maxLookBackDistance,
-        );
+        const { query, separatorChar } = getWordBeforeCursor(editor.getLine(cursor.line), cursor.ch, this.settings);
         this.separatorChar = separatorChar;
         // The word the popup was opened on is finished, from now on the automatic rules apply
         if (query.length === 0 && this.changedSinceManualTrigger) this.manual = false;
         return { start: { line: cursor.line, ch: cursor.ch - query.length }, end: cursor, query };
     }
 
-    private createContext(context: EditorSuggestContext): SuggestionContext {
-        const { editor } = context;
-        const state = editor.cm.state;
-        const offset = editor.posToOffset(context.end);
-        // Looking at the syntax tree is the expensive part, and several providers ask the same questions
-        let cursor: CursorContext | undefined;
-        const getCursor = () => (cursor ??= getCursorContext(state, offset));
-        const mathTypes = new Map<boolean, MathType | null>();
-
-        return {
-            editor,
-            state,
-            end: context.end,
-            query: context.query,
-            separatorChar: this.separatorChar,
-            line: editor.getLine(context.end.line),
-            manual: this.manual,
-            get inCode() {
-                return getCursor().inCode;
-            },
-            mathType(triggerInCode) {
-                let type = mathTypes.get(triggerInCode);
-                if (type === undefined) {
-                    type = getLatexContext(state, offset, triggerInCode, getCursor());
-                    mathTypes.set(triggerInCode, type);
-                }
-                return type;
-            },
-        };
-    }
-
     getSuggestions(context: EditorSuggestContext): Suggestion[] {
-        const ctx = this.createContext(context);
-
-        let suggestions: Suggestion[] = [];
-        for (const provider of this.plugin.providers) {
-            const result = provider.getSuggestions(ctx, this.settings);
-            if (result.length === 0) continue;
-            for (const s of result) s.provider = provider;
-
-            if (provider.blocksAllOtherProviders) {
-                suggestions = result;
-                // Position the popup where the replacement starts
-                const start = result.find((s) => s.overrideStart)?.overrideStart;
-                if (start) context.start = start;
-                break;
-            }
-            suggestions.push(...result);
-        }
-
-        // The one place where the blacklist is applied
-        const seen = new Set<string>();
-        const { blacklist, usage } = this.plugin;
-        suggestions = suggestions.filter((s) => {
-            if (seen.has(s.displayName) || blacklist.has(s.displayName)) return false;
-            seen.add(s.displayName);
-            return true;
-        });
-
-        // Stable sort: the providers' order is kept, except that fuzzy matches of one provider never come before the
-        // better matches of another, and (optionally) that frequently used suggestions come first within those groups.
-        const byUsage = this.settings.rankByUsage;
-        suggestions.sort(
-            (a, b) =>
-                Number(!!a.isFuzzy) - Number(!!b.isFuzzy) ||
-                (byUsage ? usage.get(b.displayName) - usage.get(a.displayName) : 0),
+        const { suggestions, start } = computeSuggestions(
+            this.plugin,
+            createSuggestionContext(
+                context.editor,
+                context.end,
+                { query: context.query, separatorChar: this.separatorChar },
+                this.manual,
+            ),
         );
-
-        return suggestions.slice(0, MAX_SUGGESTIONS);
+        // Position the popup where the replacement starts
+        if (start) context.start = start;
+        return suggestions;
     }
 
     renderSuggestion(value: Suggestion, el: HTMLElement): void {
@@ -307,26 +232,12 @@ export class SuggestionPopup extends EditorSuggest<Suggestion> {
         if (!ctx) return;
         const { editor } = ctx;
 
-        const start = value.overrideStart ?? ctx.start;
         const end = value.overrideEnd ?? ctx.end;
-        const from = editor.posToOffset(start);
+        const from = editor.posToOffset(value.overrideStart ?? ctx.start);
         const to = editor.posToOffset({ line: end.line, ch: Math.min(end.ch, editor.getLine(end.line).length) });
 
-        let replacement = value.replacement;
-        if (value.appendSpace && !/^\s/.test(editor.cm.state.doc.sliceString(to, to + 1))) replacement += " ";
-
         this.close();
-        if (value.snippet) {
-            insertSnippet(editor.cm, from, to, replacement, value.snippet);
-        } else {
-            editor.cm.dispatch({
-                changes: { from, to, insert: replacement },
-                selection: { anchor: from + replacement.length },
-                scrollIntoView: true,
-            });
-        }
-
-        if (this.settings.rankByUsage) this.plugin.usage.record(value.displayName);
+        insertSuggestion(this.plugin, editor.cm, value, from, to);
     }
 
     selectNextItem(dir: SelectionDirection) {

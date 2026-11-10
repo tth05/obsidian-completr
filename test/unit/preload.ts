@@ -30,6 +30,7 @@ void mock.module("obsidian", () => ({
     debounce<T extends unknown[]>(fn: (...args: T) => unknown) {
         return Object.assign((...args: T) => fn(...args), { cancel() {}, run() {} });
     },
+    editorInfoField: undefined,
     renderMatches() {},
     setIcon() {},
     Plugin: class {},

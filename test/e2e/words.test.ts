@@ -45,7 +45,7 @@ afterAll(async () => {
     await removeWordLists(obsidian, ...wordLists);
     // Words inserted from word lists were learned by the scanner, too
     const inserted = ["xylophonist", "καλημέρα", "अँकाउनु", "āṣīṛū", "mindful", "markdown", "rankwordlonger"];
-    const typed = ["codeb", "exactwords", "mkd", "sch", "asi", "fzb", "unbla", "scanbl", "canv"];
+    const typed = ["codeb", "exactwords", "mkd", "sch", "asi", "fzb", "unbla", "scanbl", "canv", "mathb"];
     await forgetScannedWords(obsidian, [...scannedWords, ...inserted, ...typed]);
     await forgetUsage(obsidian, inserted);
 });
@@ -467,6 +467,28 @@ describe("word lists", () => {
         await openFreshNote("```\ncode\n```\n<|>");
         await obsidian.type("codeb");
         await obsidian.waitForPopup((p) => p.items.includes("codeblockword"));
+    });
+
+    test("in math, a word right after a backslash is a command: no words are suggested", async () => {
+        await wordList("e2e-math.txt", ["mathbbzz"]);
+        await openFreshNote("Text $<|>$");
+        await obsidian.type("\\mathb");
+        // Only the LaTeX commands, inserting the word would turn it into the command \mathbbzz
+        const popup = await obsidian.waitForPopup((p) => p.items.includes("\\mathbb{#}"));
+        expect(popup.items).not.toContain("mathbbzz");
+        expect(popup.items.every((item) => item.startsWith("\\"))).toBe(true);
+        await obsidian.press("Escape");
+
+        // Words are still suggested in math when not after a backslash
+        await openFreshNote("Text $x <|>$");
+        await obsidian.type("mathb");
+        await obsidian.waitForPopup((p) => p.items.includes("mathbbzz"));
+        await obsidian.press("Escape");
+
+        // and after a backslash outside of math
+        await openFreshNote("Text <|>");
+        await obsidian.type("\\mathb");
+        await obsidian.waitForPopup((p) => p.items.includes("mathbbzz"));
     });
 
     test("frequently inserted words move up (rank by usage)", async () => {

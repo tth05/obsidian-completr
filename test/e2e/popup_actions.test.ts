@@ -13,6 +13,7 @@ import {
     clickSuggestionAction,
     HIDE_ACTION,
     hoverSuggestion,
+    popupWidth,
     rowsWithVisibleActions,
     suggestionRows,
 } from "./helpers/popup_actions.ts";
@@ -97,11 +98,16 @@ test("the buttons of a suggestion are hidden until it is hovered", async () => {
         expect(row.actions[0].iconClass).toContain("lucide-eye-off");
         expect(row.actions[0].visibility).toBe("hidden");
     }
+    // The buttons take up no room, the popup is as wide as its suggestions
+    const { width, withoutActions } = await popupWidth(obsidian);
+    expect(width).toBe(withoutActions);
 
     await hoverSuggestion(obsidian, "hovwords");
     await obsidian.waitFor(async () => (await rowsWithVisibleActions(obsidian)).join() === "hovwords", {
         what: "the buttons of the hovered suggestion",
     });
+    // Showing them doesn't change the width either
+    expect((await popupWidth(obsidian)).width).toBe(width);
     await hoverSuggestion(obsidian, "hovwordless");
     await obsidian.waitFor(async () => (await rowsWithVisibleActions(obsidian)).join() === "hovwordless", {
         what: "the buttons of the hovered suggestion",
@@ -205,6 +211,14 @@ describe("edit button", () => {
         expect(edit.iconClass).toContain("svg-icon");
         expect(edit.visibility).toBe("hidden");
 
+        // With both buttons shown over the row's preview, the popup is as wide as without any buttons
+        await hoverSuggestion(obsidian, second.displayName);
+        await obsidian.waitFor(async () => (await rowsWithVisibleActions(obsidian)).join() === second.displayName, {
+            what: "the buttons of the hovered command",
+        });
+        const { width, withoutActions } = await popupWidth(obsidian);
+        expect(width).toBe(withoutActions);
+
         await clickSuggestionAction(obsidian, second.displayName, EDIT_COMMAND);
         expect(await waitForEntryModal(obsidian)).toEqual({
             title: EDIT_COMMAND,
@@ -269,12 +283,12 @@ describe("edit button", () => {
         await setLatexCommands([command]);
         try {
             await obsidian.openNote("$<|>$", { path: NOTE });
-            await obsidian.type("\\hov");
-            // Words are suggested in math, too
+            // Without a backslash, words are suggested in math, too
+            await obsidian.type("hov");
             await waitForItems(obsidian, [command.displayName, ...WORDS]);
             await clickSuggestionAction(obsidian, command.displayName, HIDE_ACTION);
             await waitForItems(obsidian, WORDS);
-            expect((await obsidian.editor()).textWithCursor).toBe("$\\hov<|>$");
+            expect((await obsidian.editor()).textWithCursor).toBe("$hov<|>$");
             expect(await blacklist()).toContain(command.displayName);
             // Hidden, but still one of the custom commands
             expect(

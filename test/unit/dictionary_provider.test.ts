@@ -138,14 +138,75 @@ describe("DictionaryProvider", () => {
         expect(provider.indexRequests).toEqual([]);
     });
 
-    test("the math type of the context does not matter", () => {
+    test("the math type is only looked at for a word after a backslash", () => {
         const provider = new TestProvider(words);
-        const context = makeContext("hel", {
-            mathType: () => {
-                throw new Error("must not be called");
-            },
+        for (const separatorChar of [null, " ", "{", "$"]) {
+            const context = makeContext("hel", {
+                separatorChar,
+                mathType: () => {
+                    throw new Error("must not be called");
+                },
+            });
+            expect(provider.getSuggestions(context, makeSettings())).toHaveLength(4);
+        }
+    });
+
+    describe("after a backslash", () => {
+        const inMath = { separatorChar: "\\", mathType: () => "inline" as const };
+
+        test("in math nothing is suggested: the word is the name of a command", () => {
+            const provider = new TestProvider(words);
+            expect(provider.getSuggestions(makeContext("hel", inMath), makeSettings())).toEqual([]);
+            expect(provider.getSuggestions(makeContext("hel", { ...inMath, manual: true }), makeSettings())).toEqual(
+                [],
+            );
+            expect(
+                provider.getSuggestions(
+                    makeContext("hel", { separatorChar: "\\", mathType: () => "block" }),
+                    makeSettings(),
+                ),
+            ).toEqual([]);
+            // Not even searched
+            expect(provider.indexRequests).toEqual([]);
         });
-        expect(provider.getSuggestions(context, makeSettings())).toHaveLength(4);
+
+        test("in math, words are still suggested after other characters", () => {
+            for (const separatorChar of [null, " ", "{", "_", "$"])
+                expect(names(words, "hel", {}, { ...inMath, separatorChar })).toEqual([
+                    "help",
+                    "hello",
+                    "Hello",
+                    "helicopter",
+                ]);
+        });
+
+        test("outside of math, words are suggested", () => {
+            expect(names(words, "hel", {}, { separatorChar: "\\", mathType: () => null })).toEqual([
+                "help",
+                "hello",
+                "Hello",
+                "helicopter",
+            ]);
+        });
+
+        test("whether a dollar sign in code starts math follows latexTriggerInCodeBlocks", () => {
+            for (const latexTriggerInCodeBlocks of [true, false]) {
+                const calls: boolean[] = [];
+                const context = makeContext("hel", {
+                    separatorChar: "\\",
+                    mathType: (triggerInCode) => {
+                        calls.push(triggerInCode);
+                        return triggerInCode ? "inline" : null;
+                    },
+                });
+                const result = new TestProvider(words).getSuggestions(
+                    context,
+                    makeSettings({ latexTriggerInCodeBlocks }),
+                );
+                expect(calls).toEqual([latexTriggerInCodeBlocks]);
+                expect(result).toHaveLength(latexTriggerInCodeBlocks ? 0 : 4);
+            }
+        });
     });
 
     test("suggestions are plain words: no snippet, detail, preview or custom entry", () => {

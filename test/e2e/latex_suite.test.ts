@@ -107,6 +107,26 @@ test("jumpWithTab: Completr's placeholders take precedence over LaTeX Suite's ta
     expect(await text()).toBe("$\\frac{a}{b}$<|>");
 });
 
+test("inline suggestions: Tab inserts the ghost text instead of LaTeX Suite's tabout", async () => {
+    await obsidian.setSettings({ inlineSuggestions: true, autoTrigger: false });
+    await openFreshNote(obsidian, "$x + <|>$");
+    await obsidian.type("\\alp");
+    await obsidian.waitFor(
+        () =>
+            obsidian.eval(
+                () =>
+                    app.workspace.activeEditor!.editor!.cm.dom.querySelector(".completr-ghost-text")?.textContent ===
+                    "ha",
+            ),
+        { what: "ghost text" },
+    );
+    await obsidian.press("Tab");
+    expect(await text()).toBe("$x + \\alpha<|>$");
+    // Without ghost text, Tab is LaTeX Suite's again
+    await obsidian.press("Tab");
+    expect(await text()).toBe("$x + \\alpha$<|>");
+});
+
 test("the popup opens automatically while typing in math", async () => {
     await openFreshNote(obsidian, "$x + <|>$");
     await obsidian.type("\\al");

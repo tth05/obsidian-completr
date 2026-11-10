@@ -9,9 +9,18 @@ body {
     --completr-placeholder-6: #ffdead;
 }
 
+/* ---- Inline suggestions ---- */
+
+/* Text that isn't there yet: only its color differs from the text around it. */
+.completr-ghost-text {
+    color: var(--text-faint);
+    user-select: none;
+}
+
 /* ---- Popup ---- */
 
 .completr-suggestion-item {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 0.5ch;
@@ -64,24 +73,29 @@ body {
 }
 
 /*
- * Buttons of a suggestion. They always take up their space and only become visible when the suggestion is hovered, so
- * the popup doesn't change its size and nothing is covered.
+ * Buttons of a suggestion. They take up no space, so the popup is only as wide as its suggestions, and appear at the
+ * right end of the hovered suggestion, covering what is there (a preview, a snippet's detail) with the row's background
+ * that fades in from the left.
  */
 .completr-suggestion-actions {
+    --completr-actions-fade: 1.5em;
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
     display: flex;
-    flex-shrink: 0;
-    justify-content: flex-end;
+    align-items: center;
     gap: 2px;
-    /* Room for two buttons in every row, so previews line up */
-    min-width: calc(2 * (var(--completr-suggestion-icon-size) + 4px) + 2px + 0.5em);
-    margin-left: auto;
-    padding-left: 0.5em;
+    padding-left: var(--completr-actions-fade);
+    padding-right: var(--size-4-3);
+    /* Opaque, unlike the background of the selected row, which is drawn over the popup's background */
+    background-color: var(--suggestion-background, var(--background-primary));
+    mask-image: linear-gradient(to right, transparent, black var(--completr-actions-fade));
     visibility: hidden;
 }
 
-.completr-suggestion-detail ~ .completr-suggestion-actions,
-.completr-suggestion-preview ~ .completr-suggestion-actions {
-    margin-left: 0;
+.suggestion-item.is-selected > .completr-suggestion-actions {
+    background-image: linear-gradient(var(--background-modifier-hover), var(--background-modifier-hover));
 }
 
 .suggestion-item:hover > .completr-suggestion-actions {
