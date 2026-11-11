@@ -20,6 +20,8 @@ Advanced auto-completion for Obsidian: LaTeX, front matter, callouts and regular
     - Word lists: import files with one word per line. Fast, even with millions of words
     - Works with every script (Latin, Greek, Cyrillic, Devanagari, ...)
     - Optional fuzzy matching (`mkd` -> `markdown`), sorting and ranking by usage
+    - Optional space after a completed word, and "Period after double space": pressing `Space` right after turns it
+      into `. `, like on a phone keyboard
 - **Front matter**: keys and values used anywhere in your vault, including tags and nested values like `Area/Topic`
   (in source mode)
 - **Callouts**: `> [!` suggests callout types with their icons, optionally from the

@@ -4,6 +4,7 @@ import { DataFiles } from "./data_files.ts";
 import { reportError } from "./errors.ts";
 import { InlineSuggestions } from "./inline_suggestions.ts";
 import { createKeymap, registerCommands } from "./keybindings.ts";
+import { periodField } from "./period.ts";
 import { SuggestionPopup } from "./popup.ts";
 import { SuggestionBlacklist } from "./provider/blacklist.ts";
 import { CalloutProvider } from "./provider/callout_provider.ts";
@@ -66,6 +67,7 @@ export default class CompletrPlugin extends Plugin {
         registerCommands(this);
         this.registerEditorExtension([
             snippetExtension,
+            periodField,
             this.inlineSuggestions.extension,
             createKeymap(this),
             EditorView.updateListener.of((update) => this.popup.onEditorUpdate(update)),

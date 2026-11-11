@@ -6,6 +6,7 @@ import { guarded } from "./errors.ts";
 import { BLACKLIST_COMMAND, getHotkeys, isHotkeyMatch, OPEN_POPUP_COMMAND } from "./hotkeys.ts";
 import type CompletrPlugin from "./main.ts";
 import { CustomEntryModal } from "./modals.ts";
+import { disarmPeriod, insertPeriod } from "./period.ts";
 import { SelectionDirection } from "./popup.ts";
 import { isInPlaceholder, jumpToNextPlaceholder } from "./snippets.ts";
 
@@ -78,7 +79,11 @@ export function registerCommands(plugin: CompletrPlugin) {
             "Open suggestion popup",
             [{ modifiers: ["Mod"], key: " " }],
             () => true,
-            (editor) => popup.triggerManually(editor, plugin.app.workspace.getActiveFile()),
+            (editor) => {
+                // Opening the popup is "something in between" as well, Space then types a space again
+                disarmPeriod(editor.cm);
+                popup.triggerManually(editor, plugin.app.workspace.getActiveFile());
+            },
         ),
         editorCommand(
             "completr-select-next-suggestion",
@@ -212,9 +217,13 @@ export function registerCommands(plugin: CompletrPlugin) {
     );
 }
 
+/** Pressed on their own, these don't disarm "period after double space". */
+const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "AltGraph", "CapsLock"]);
+
 /**
- * See (2) above. Also implements Tab and Escape for inline suggestions and the optional "Tab inserts/jumps" settings,
- * which can't be expressed as hotkeys.
+ * See (2) above. Also implements Tab and Escape for inline suggestions, the optional "Tab inserts/jumps" settings and
+ * Space for "period after double space" (period.ts), which can't be expressed as hotkeys: a plain key must not become a
+ * global hotkey.
  */
 export function createKeymap(plugin: CompletrPlugin) {
     const { popup, inlineSuggestions } = plugin;
@@ -241,6 +250,7 @@ export function createKeymap(plugin: CompletrPlugin) {
         // Closing the popup and leaving vim's insert mode still need the key
         return !popup.isOpen && !isVimMode(plugin);
     };
+    const space = (view: EditorView) => plugin.settings.insertPeriodAfterSpace && !popup.isOpen && insertPeriod(view);
 
     return [
         Prec.highest(
@@ -252,12 +262,19 @@ export function createKeymap(plugin: CompletrPlugin) {
                 { key: "Tab", run: passThrough },
             ]),
         ),
-        // Tab and Escape run as a keydown handler: plugins like LaTeX Suite handle Tab in their own keydown handlers,
-        // which CodeMirror runs before any keymap.
+        // Tab, Escape and Space run as a keydown handler: plugins like LaTeX Suite handle Tab in their own keydown
+        // handlers, which CodeMirror runs before any keymap.
         Prec.highest(
             EditorView.domEventHandlers({
                 keydown: (evt, view) => {
-                    if (evt.shiftKey || evt.ctrlKey || evt.altKey || evt.metaKey) return false;
+                    const plain = !(evt.shiftKey || evt.ctrlKey || evt.altKey || evt.metaKey);
+                    if (plain && evt.key === " " && !evt.isComposing && space(view)) {
+                        evt.preventDefault();
+                        return true;
+                    }
+                    // Any other key disarms it. Tab may arm it again right away by accepting an inline suggestion.
+                    if (!MODIFIER_KEYS.has(evt.key)) disarmPeriod(view);
+                    if (!plain) return false;
                     const handled = evt.key === "Tab" ? tab(view) : evt.key === "Escape" ? escape(view) : false;
                     if (handled) evt.preventDefault();
                     return handled;

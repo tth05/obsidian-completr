@@ -48,6 +48,8 @@ export interface CompletrSettings {
     /** BCP 47 tag used for alphabetical sorting, empty for Obsidian's language. */
     sortLocale: string;
     insertSpaceAfterWord: boolean;
+    /** After a word with an appended space, Space turns that space into ". ". */
+    insertPeriodAfterSpace: boolean;
     /** Disables the word providers (file scanner, word lists) inside code blocks and inline code. */
     disableWordsInCode: boolean;
     iconMode: IconMode;
@@ -98,6 +100,7 @@ export const DEFAULT_SETTINGS: CompletrSettings = {
     sortOrder: SortOrder.SHORTEST_FIRST,
     sortLocale: "",
     insertSpaceAfterWord: false,
+    insertPeriodAfterSpace: false,
     disableWordsInCode: false,
     iconMode: IconMode.SUGGESTION,
     rankByUsage: true,

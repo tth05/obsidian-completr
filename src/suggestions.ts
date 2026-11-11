@@ -2,6 +2,7 @@ import type { EditorView } from "@codemirror/view";
 import type { Editor, EditorPosition } from "obsidian";
 import { type CursorContext, getCursorContext, getLatexContext, type MathType } from "./editor_context.ts";
 import type { SuggestionBlacklist } from "./provider/blacklist.ts";
+import { armPeriod } from "./period.ts";
 import type { Suggestion, SuggestionContext, SuggestionProvider } from "./provider/provider.ts";
 import type { CompletrSettings } from "./settings.ts";
 import { insertSnippet } from "./snippets.ts";
@@ -124,14 +125,18 @@ export function insertSuggestion(
     to: number,
 ) {
     let replacement = value.replacement;
-    if (value.appendSpace && !/^\s/.test(view.state.doc.sliceString(to, to + 1))) replacement += " ";
+    const appendSpace = !!value.appendSpace && !/^\s/.test(view.state.doc.sliceString(to, to + 1));
+    if (appendSpace) replacement += " ";
 
     if (value.snippet) {
         insertSnippet(view, from, to, replacement, value.snippet);
     } else {
+        const end = from + replacement.length;
         view.dispatch({
             changes: { from, to, insert: replacement },
-            selection: { anchor: from + replacement.length },
+            selection: { anchor: end },
+            // Pressing Space next turns the appended space into ". " (see period.ts)
+            effects: appendSpace && sources.settings.insertPeriodAfterSpace ? armPeriod.of(end) : [],
             scrollIntoView: true,
         });
     }

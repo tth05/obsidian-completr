@@ -313,6 +313,12 @@ export default class CompletrSettingsTab extends PluginSettingTab {
         this.toggle(group, "insertSpaceAfterWord", "Add space after words", "Insert a space after a completed word.");
         this.toggle(
             group,
+            "insertPeriodAfterSpace",
+            "Period after double space",
+            "After a completed word, pressing Space again replaces the added space with '. '. Needs 'Add space after words'.",
+        );
+        this.toggle(
+            group,
             "disableWordsInCode",
             "No words in code",
             "Don't suggest words inside code blocks and inline code.",
