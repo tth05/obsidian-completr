@@ -5,29 +5,21 @@
 
 Advanced auto-completion for Obsidian: LaTeX, front matter, callouts and regular writing.
 
+![Completr demo](assets/demo.gif)
+
 ## Features
 
-- **LaTeX**
-    - All MathJax commands and `\begin{...}` environments, no need to type the `\`
-    - Works in `$...$` and `$$...$$` blocks, also while the block isn't closed yet
-    - Snippets with placeholders: `\frac` inserts `\frac{}{}`, Enter jumps to the next placeholder
-    - Rendered preview of each command in the popup
-    - Add your own commands in the settings
-- **Snippets**: your own text templates, e.g. a meeting note header, with placeholders to jump through
-- **Inline suggestions** (optional): the best suggestion in grey after the cursor, `Tab` inserts it
-- **Words**
-    - Learns the words of your notes while you write, or scans the whole vault
-    - Word lists: import files with one word per line. Fast, even with millions of words
-    - Works with every script (Latin, Greek, Cyrillic, Devanagari, ...)
-    - Optional fuzzy matching (`mkd` -> `markdown`), sorting and ranking by usage
-    - Optional space after a completed word, and "Period after double space": pressing `Space` right after turns it
-      into `. `, like on a phone keyboard
-- **Front matter**: keys and values used anywhere in your vault, including tags and nested values like `Area/Topic`
-  (in source mode)
-- **Callouts**: `> [!` suggests callout types with their icons, optionally from the
-  [Callout Manager](https://github.com/eth-p/obsidian-callout-manager) plugin
-
-![Completr demo](assets/demo.gif)
+- **Words**: learned from your notes while you write, or from imported word lists (fast even with millions of
+  words). Works with every script, optional fuzzy matching (`mkd` -> `markdown`) and ranking by usage.
+- **Inline suggestions** (optional): the best suggestion in grey after the cursor, `Tab` inserts it.
+- **LaTeX**: all MathJax commands and environments in `$...$` and `$$...$$`, even before the block is closed.
+  Rendered previews, placeholders to jump through, and your own commands.
+- **Snippets**: your own text templates with placeholders, e.g. `:sig` or a meeting header.
+- **Front matter**: keys and values from your whole vault, including tags like `Area/Topic` (in source mode).
+- **Callouts**: `> [!` suggests callout types with their icons, optionally from
+  [Callout Manager](https://github.com/eth-p/obsidian-callout-manager).
+- **Blacklist**: hide any suggestion with one click, undo right away.
+- **Small touches** (optional): a space after completed words, and a period when you press `Space` twice.
 
 ## Installation
 
