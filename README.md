@@ -25,6 +25,8 @@ Advanced auto-completion for Obsidian: LaTeX, front matter, callouts and regular
 - **Callouts**: `> [!` suggests callout types with their icons, optionally from the
   [Callout Manager](https://github.com/eth-p/obsidian-callout-manager) plugin
 
+![Completr demo](assets/demo.gif)
+
 ## Installation
 
 Browse the community plugins list in Obsidian and search for `Completr`.
