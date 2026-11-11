@@ -1,28 +1,30 @@
 {
 	"name": "obsidian-completr",
-	"version": "3.2.0",
+	"version": "4.0.0",
 	"description": "This plugin provides advanced auto-completion capabilities for Obsidian",
 	"main": "main.js",
+	"type": "module",
+	"private": true,
 	"scripts": {
-		"dev": "node esbuild.config.mjs",
-		"build": "node esbuild.config.mjs production"
+		"dev": "bun scripts/build.ts --watch",
+		"build": "bun scripts/build.ts --production",
+		"check": "bun check --no-script && bun lint --no-script --type-aware --max-warnings 0 src test scripts && bun fmt --no-script --check src test scripts",
+		"test:e2e": "bun test --preload ./test/e2e/preload.ts --timeout 30000 ./test/e2e",
+		"version": "bun scripts/version-bump.ts && git add manifest.json versions.json",
+		"fix": "bun lint --no-script --fix src test scripts && bun fmt --no-script src test scripts"
 	},
 	"keywords": [],
 	"author": "tth05",
 	"license": "MIT",
 	"devDependencies": {
-		"@codemirror/state": "^6.1.2",
-		"@types/node": "^16.11.6",
-		"@typescript-eslint/eslint-plugin": "^5.30.7",
-		"@typescript-eslint/parser": "^5.30.7",
-		"builtin-modules": "^3.3.0",
-		"esbuild": "^0.15.11",
-		"jschardet": "^3.0.0",
-		"obsidian": "^0.16.3",
-		"tslib": "2.4.0",
-		"typescript": "4.8.4"
+		"@codemirror/language": "^6.13.1",
+		"@codemirror/state": "6.7.6",
+		"@codemirror/view": "6.43.13",
+		"@types/bun": "latest",
+		"obsidian": "^1.14.4"
 	},
 	"dependencies": {
+		"monkey-around": "^3.0.0",
 		"obsidian-callout-manager": "^1.0.2-alpha1"
 	}
 }

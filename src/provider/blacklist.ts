@@ -1,58 +1,55 @@
-import { Suggestion } from "./provider";
-import { Vault } from "obsidian";
-import { intoCompletrPath } from "../settings";
+import { type DataFiles, splitLines } from "../data_files.ts";
 
-const BLACKLIST_PATH = "blacklisted_suggestions.txt";
-const NEW_LINE_REGEX = /\r?\n/;
+const BLACKLIST_FILE = "blacklisted_suggestions.txt";
 
-export const SuggestionBlacklist = new class {
-    private blacklist: Set<string> = new Set<string>();
+/** Suggestions (by display name) that should never be shown. Stored one per line in the plugin folder. */
+export class SuggestionBlacklist {
+    private readonly entries = new Set<string>();
 
-    add(suggestion: Suggestion) {
-        this.addFromText(suggestion.displayName);
+    constructor(private readonly files: DataFiles) {}
+
+    get size(): number {
+        return this.entries.size;
     }
 
-    addFromText(text: string) {
-        this.blacklist.add(text);
+    has(text: string): boolean {
+        return this.entries.has(text);
     }
 
-    has(suggestion: Suggestion): boolean {
-        return this.hasText(suggestion.displayName);
+    values(): string[] {
+        return [...this.entries];
     }
 
-    hasText(text: string): boolean {
-        return this.blacklist.has(text);
+    async add(text: string) {
+        if (!text || this.entries.has(text)) return;
+        this.entries.add(text);
+        await this.save();
     }
 
-    filter(suggestions: Suggestion[]): Suggestion[] {
-        if (this.blacklist.size < 1)
-            return suggestions;
-
-        return suggestions.filter(s => !this.blacklist.has(s.displayName));
+    async addAll(texts: Iterable<string>) {
+        let changed = false;
+        for (const text of texts) {
+            if (!text || this.entries.has(text)) continue;
+            this.entries.add(text);
+            changed = true;
+        }
+        if (changed) await this.save();
     }
 
-    filterText(suggestions: string[]): string[] {
-        if (this.blacklist.size < 1)
-            return suggestions;
-
-        return suggestions.filter(s => !this.blacklist.has(s));
+    async remove(text: string) {
+        if (this.entries.delete(text)) await this.save();
     }
 
-    async saveData(vault: Vault) {
-        await vault.adapter.write(intoCompletrPath(vault, BLACKLIST_PATH), [...this.blacklist].join("\n"));
+    private async save() {
+        await this.files.write(BLACKLIST_FILE, [...this.entries].join("\n"));
     }
 
-    async loadData(vault: Vault) {
-        const path = intoCompletrPath(vault, BLACKLIST_PATH);
-        if (!(await vault.adapter.exists(path)))
-            return
-
-        const contents = (await vault.adapter.read(path)).split(NEW_LINE_REGEX);
-        for (let word of contents) {
-            if (!word)
-                continue;
-
-            this.addFromText(word);
+    async load() {
+        this.entries.clear();
+        const contents = await this.files.read(BLACKLIST_FILE);
+        if (contents === null) return;
+        for (const line of splitLines(contents)) {
+            if (line) this.entries.add(line);
         }
     }
-};
+}

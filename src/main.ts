@@ -1,438 +1,187 @@
-import { EditorPosition, KeymapContext, MarkdownView, Plugin, TFile, } from "obsidian";
-import SnippetManager from "./snippet_manager";
-import SuggestionPopup, { SelectionDirection } from "./popup";
-import { CompletrSettings, DEFAULT_SETTINGS } from "./settings";
-import { WordList } from "./provider/word_list_provider";
-import { FileScanner } from "./provider/scanner_provider";
-import CompletrSettingsTab from "./settings_tab";
-import { EditorView, ViewUpdate } from "@codemirror/view";
-import { editorToCodeMirrorState, posFromIndex } from "./editor_helpers";
-import { markerStateField } from "./marker_state_field";
-import { FrontMatter } from "./provider/front_matter_provider";
-import { Latex } from "./provider/latex_provider";
-import { Callout } from "./provider/callout_provider";
-import { SuggestionBlacklist } from "./provider/blacklist";
-import PeriodInserter from "./period_inserter";
+import { EditorView } from "@codemirror/view";
+import { type Editor, Notice, Plugin, TFile } from "obsidian";
+import { DataFiles } from "./data_files.ts";
+import { reportError } from "./errors.ts";
+import { InlineSuggestions } from "./inline_suggestions.ts";
+import { createKeymap, registerCommands } from "./keybindings.ts";
+import { SuggestionPopup } from "./popup.ts";
+import { SuggestionBlacklist } from "./provider/blacklist.ts";
+import { CalloutProvider } from "./provider/callout_provider.ts";
+import { FrontMatterProvider } from "./provider/front_matter_provider.ts";
+import { LatexProvider } from "./provider/latex_provider.ts";
+import type { SuggestionProvider } from "./provider/provider.ts";
+import { FileScannerProvider } from "./provider/scanner_provider.ts";
+import { SnippetProvider } from "./provider/snippet_provider.ts";
+import { WordListProvider } from "./provider/word_list_provider.ts";
+import { type CompletrSettings, loadSettings } from "./settings.ts";
+import CompletrSettingsTab from "./settings_tab.ts";
+import { snippetExtension } from "./snippets.ts";
+import { SuggestionUsage } from "./usage.ts";
+
+/** How long to wait after the last edit before scanning the active note for new words. */
+const SCAN_DELAY_MS = 1000;
 
 export default class CompletrPlugin extends Plugin {
+    declare settings: CompletrSettings;
 
-    settings: CompletrSettings;
+    files!: DataFiles;
+    blacklist!: SuggestionBlacklist;
+    usage!: SuggestionUsage;
 
-    private snippetManager: SnippetManager;
-    private _suggestionPopup: SuggestionPopup;
-    private _periodInserter: PeriodInserter;
+    frontMatter!: FrontMatterProvider;
+    callout!: CalloutProvider;
+    latex!: LatexProvider;
+    snippets!: SnippetProvider;
+    fileScanner!: FileScannerProvider;
+    wordList!: WordListProvider;
+    /** In priority order. */
+    providers!: SuggestionProvider[];
 
-    async onload() {
-        await this.loadSettings();
+    popup!: SuggestionPopup;
+    inlineSuggestions!: InlineSuggestions;
+    /** Resolves once all data files are loaded. */
+    loaded!: Promise<void>;
 
-        this.snippetManager = new SnippetManager();
-        this._suggestionPopup = new SuggestionPopup(this.app, this.settings, this.snippetManager);
-        this._periodInserter = new PeriodInserter();
+    override async onload() {
+        const { settings, migratedFrom } = loadSettings(await this.loadData());
+        this.settings = settings;
+        if (migratedFrom !== null) await this.saveSettings();
 
-        this.registerEditorSuggest(this._suggestionPopup);
+        this.files = new DataFiles(
+            this.app.vault.adapter,
+            this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`,
+        );
+        this.blacklist = new SuggestionBlacklist(this.files);
+        this.usage = new SuggestionUsage(this.files);
+        this.frontMatter = new FrontMatterProvider();
+        this.callout = new CalloutProvider(this, this.files);
+        this.latex = new LatexProvider(this.files, this.blacklist);
+        this.snippets = new SnippetProvider(this.files);
+        this.fileScanner = new FileScannerProvider(this.files);
+        this.wordList = new WordListProvider(this.files);
+        this.providers = [this.frontMatter, this.callout, this.snippets, this.latex, this.fileScanner, this.wordList];
 
-        this.registerEvent(this.app.workspace.on('file-open', this.onFileOpened, this));
-        this.registerEvent(this.app.metadataCache.on('changed', FrontMatter.onCacheChange, FrontMatter));
-        this.app.workspace.onLayoutReady(() => FrontMatter.loadYAMLKeyCompletions(this.app.metadataCache, this.app.vault.getMarkdownFiles()));
-
-        this.registerEditorExtension(markerStateField);
-        this.registerEditorExtension(EditorView.updateListener.of(new CursorActivityListener(this.snippetManager, this._suggestionPopup, this._periodInserter).listener));
-
+        this.inlineSuggestions = new InlineSuggestions(this);
+        this.popup = new SuggestionPopup(this.app, this);
+        registerCommands(this);
+        this.registerEditorExtension([
+            snippetExtension,
+            this.inlineSuggestions.extension,
+            createKeymap(this),
+            EditorView.updateListener.of((update) => this.popup.onEditorUpdate(update)),
+        ]);
         this.addSettingTab(new CompletrSettingsTab(this.app, this));
 
-        this.setupCommands();
-
-        if ((this.app.vault as any).config?.legacyEditor) {
-            console.log("Completr: Without Live Preview enabled, most features of Completr will not work properly!");
-        }
+        this.loaded = new Promise((resolve) => {
+            this.app.workspace.onLayoutReady(async () => {
+                // Registered late, so that the suggests of Obsidian and other plugins get the first chance to trigger.
+                this.registerEditorSuggest(this.popup);
+                await this.loadDataFiles();
+                this.registerEvents();
+                resolve();
+            });
+        });
     }
 
-    private setupCommands() {
-        // This replaces the default handler for commands. This is needed because the default handler always consumes
-        // the event if the command exists.
-        const app = this.app as any;
-        app.scope.keys = [];
+    override onunload() {
+        this.callout.unload();
+        this.fileScanner.flush().catch(reportError);
+        this.usage.flush().catch(reportError);
+    }
 
-        const isHotkeyMatch = (hotkey: any, context: KeymapContext, isBypassCommand: boolean): boolean => {
-            //Copied from original isMatch function, modified to not require exactly the same modifiers for
-            // completr-bypass commands. This allows triggering for example Ctrl+Enter even when
-            // pressing Ctrl+Shift+Enter. The additional modifier is then passed to the editor.
-
-            /* Original isMatch function:
-            var n = e.modifiers
-                , i = e.key;
-            return (null === n || n === t.modifiers) && (!i || (i === t.vkey || !(!t.key || i.toLowerCase() !== t.key.toLowerCase())))
-            */
-
-            const modifiers = hotkey.modifiers, key = hotkey.key;
-            if (modifiers !== null && (isBypassCommand ? !context.modifiers.contains(modifiers) : modifiers !== context.modifiers))
-                return false;
-            return (!key || (key === context.vkey || !(!context.key || key.toLowerCase() !== context.key.toLowerCase())))
-        }
-        this.app.scope.register(null, null, (e: KeyboardEvent, t: KeymapContext) => {
-            const hotkeyManager = app.hotkeyManager;
-            hotkeyManager.bake();
-            for (let bakedHotkeys = hotkeyManager.bakedHotkeys, bakedIds = hotkeyManager.bakedIds, r = 0; r < bakedHotkeys.length; r++) {
-                const hotkey = bakedHotkeys[r];
-                const id = bakedIds[r];
-                const command = app.commands.findCommand(id);
-                const isBypassCommand = command?.isBypassCommand?.();
-                if (isHotkeyMatch(hotkey, t, isBypassCommand)) {
-                    // Condition taken from original function
-                    if (!command || (e.repeat && !command.repeatable)) {
-                        continue;
-                    } else if (command.isVisible && !command.isVisible()) {
-                        //HACK: Hide our commands when to popup is not visible to allow the keybinds to execute their default action.
-                        continue;
-                    } else if (isBypassCommand) {
-                        this._suggestionPopup.close();
-
-                        const validMods = t.modifiers.replace(new RegExp(`${hotkey.modifiers},*`), "").split(",");
-                        //Sends the event again, only keeping the modifiers which didn't activate this command
-                        let event = new KeyboardEvent("keydown", {
-                            key: hotkeyManager.defaultKeys[id][0].key,
-                            ctrlKey: validMods.contains("Ctrl"),
-                            shiftKey: validMods.contains("Shift"),
-                            altKey: validMods.contains("Alt"),
-                            metaKey: validMods.contains("Meta")
-                        });
-                        e.target.dispatchEvent(event);
-                        return false;
-                    }
-
-                    if (app.commands.executeCommandById(id))
-                        return false
-                }
+    /** Loads everything the providers need. One broken file must not keep the rest from working. */
+    private async loadDataFiles() {
+        const load = async (what: string, run: () => Promise<unknown> | void) => {
+            try {
+                // Loaders return a message if they could recover from a problem (e.g. an invalid file)
+                const problem = await run();
+                if (typeof problem === "string") new Notice("Completr: " + problem, 8000);
+            } catch (e) {
+                console.error(`Completr: Unable to load ${what}`, e);
+                new Notice(`Completr: Unable to load ${what}. See the developer console for details.`, 8000);
             }
-        });
+        };
 
-        this.addCommand({
-            id: 'completr-open-suggestion-popup',
-            name: 'Open suggestion popup',
-            hotkeys: [
-                {
-                    key: " ",
-                    modifiers: ["Mod"]
-                }
-            ],
-            editorCallback: (editor) => {
-                // This is the same function that is called by obsidian when you type a character
-                (this._suggestionPopup as any).trigger(editor, /* Passing null here is a signal that this was triggered manually by the user */ null, true);
-            },
-            // @ts-ignore
-            isVisible: () => !this._suggestionPopup.isVisible()
-        });
-        this.addCommand({
-            id: 'completr-select-next-suggestion',
-            name: 'Select next suggestion',
-            hotkeys: [
-                {
-                    key: "ArrowDown",
-                    modifiers: []
-                }
-            ],
-            repeatable: true,
-            editorCallback: (_) => {
-                this.suggestionPopup.selectNextItem(SelectionDirection.NEXT);
-            },
-            // @ts-ignore
-            isVisible: () => this._suggestionPopup.isVisible(),
-        });
-        this.addCommand({
-            id: 'completr-select-previous-suggestion',
-            name: 'Select previous suggestion',
-            hotkeys: [
-                {
-                    key: "ArrowUp",
-                    modifiers: []
-                }
-            ],
-            repeatable: true,
-            editorCallback: (_) => {
-                this.suggestionPopup.selectNextItem(SelectionDirection.PREVIOUS);
-            },
-            // @ts-ignore
-            isVisible: () => this._suggestionPopup.isVisible(),
-        });
-        this.addCommand({
-            id: 'completr-insert-selected-suggestion',
-            name: 'Insert selected suggestion',
-            hotkeys: [
-                {
-                    key: "Enter",
-                    modifiers: []
-                }
-            ],
-            editorCallback: (editor) => {
-                this.suggestionPopup.applySelectedItem();
-                this.suggestionPopup.postApplySelectedItem(editor);
-                this._periodInserter.allowInsertPeriod();
-            },
-            // @ts-ignore
-            isBypassCommand: () => !this._suggestionPopup.isFocused(),
-            isVisible: () => this._suggestionPopup.isVisible(),
-        });
-        this.addCommand({
-            id: 'completr-space-period-insert',
-            name: 'Add period after word',
-            hotkeys: [
-                {
-                    key: " ",
-                    modifiers: []
-                }
-            ],
-            editorCallback: (editor) => this._periodInserter.attemptInsert(editor),
-            // @ts-ignore
-            isBypassCommand: () => false,
-            isVisible: () => this.settings.insertPeriodAfterSpaces && this._periodInserter.canInsertPeriod()
-        });
-        this.addCommand({
-            id: 'completr-bypass-enter-key',
-            name: 'Bypass the popup and press Enter',
-            hotkeys: [
-                {
-                    key: "Enter",
-                    modifiers: ["Ctrl"]
-                }
-            ],
-            editorCallback: (_) => {
-            },
-            // @ts-ignore
-            isBypassCommand: () => true,
-            isVisible: () => this._suggestionPopup.isVisible(),
-        });
-        this.addCommand({
-            id: 'completr-bypass-tab-key',
-            name: 'Bypass the popup and press Tab',
-            hotkeys: [
-                {
-                    key: "Tab",
-                    modifiers: ["Ctrl"]
-                }
-            ],
-            editorCallback: (_) => {
-            },
-            // @ts-ignore
-            isBypassCommand: () => true,
-            isVisible: () => this._suggestionPopup.isVisible(),
-        });
-        this.addCommand({
-            id: 'completr-blacklist-current-word',
-            name: 'Add the currently selected word to the blacklist',
-            hotkeys: [
-                {
-                    key: "D",
-                    modifiers: ["Shift"]
-                }
-            ],
-            editorCallback: (editor) => {
-                SuggestionBlacklist.add(this._suggestionPopup.getSelectedItem());
-                SuggestionBlacklist.saveData(this.app.vault);
-                (this._suggestionPopup as any).trigger(editor, this.app.workspace.getActiveFile(), true);
-            },
-            // @ts-ignore
-            isBypassCommand: () => !this._suggestionPopup.isFocused(),
-            isVisible: () => this._suggestionPopup.isVisible(),
-        });
-        this.addCommand({
-            id: 'completr-close-suggestion-popup',
-            name: 'Close suggestion popup',
-            hotkeys: [
-                {
-                    key: "Escape",
-                    modifiers: []
-                }
-            ],
-            editorCallback: (_) => this.suggestionPopup.close(),
-            // @ts-ignore
-            isVisible: () => this._suggestionPopup.isVisible(),
-        });
-        this.addCommand({
-            id: 'completr-jump-to-next-snippet-placeholder',
-            name: 'Jump to next snippet placeholder',
-            hotkeys: [
-                {
-                    key: "Enter",
-                    modifiers: []
-                }
-            ],
-            editorCallback: (editor, _) => {
-                const placeholder = this.snippetManager.placeholderAtPos(editor.getCursor());
-                //Sanity check
-                if (!placeholder)
-                    return;
-                const placeholderEnd = posFromIndex(editorToCodeMirrorState(placeholder.editor).doc, placeholder.marker.to);
+        // First, the LaTeX commands may add to it
+        await load("the blacklist", () => this.blacklist.load());
+        await Promise.all([
+            load("the LaTeX commands", () => this.latex.load()),
+            load("the snippets", () => this.snippets.load()),
+            load("the callouts", () => this.callout.load(this.settings)),
+            load("the word lists", () => this.wordList.load(this.settings)),
+            load("the scanned words", () => this.fileScanner.load(this.settings)),
+            load("the usage counts", () => this.usage.load()),
+            load("the front matter", () => {
+                this.frontMatter.loadAll(this.app.metadataCache, this.app.vault.getMarkdownFiles());
+            }),
+        ]);
 
-                if (!this.snippetManager.consumeAndGotoNextMarker(editor)) {
-                    editor.setSelections([{
-                        anchor: {
-                            ...placeholderEnd,
-                            ch: Math.min(editor.getLine(placeholderEnd.line).length, placeholderEnd.ch + 1)
-                        }
-                    }]);
-                }
-            },
-            // @ts-ignore
-            isVisible: () => {
-                const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-                if (!view)
-                    return false;
-                const placeholder = this.snippetManager.placeholderAtPos(view.editor.getCursor());
-                return placeholder != null;
-            },
-        });
-
-        // Here are some notes about this command and the isBypassCommand function:
-        // - This command is registered last so that other hotkeys can be bound to tab without being overridden
-        // - The isBypassCommand function exists, because obsidian has editor suggest related event handlers for Enter,
-        //   Tab, ArrowUp and ArrowDown which completely prevent those keys from getting to the editor while an editor
-        //   suggest is open. This function bypasses that using the custom hotkey hook above which will dispatch an
-        //   event to the editor if the isBypassCommand function returns true.
-        // - All of this restores the default behavior for all keys while the suggestion popup is open, but not focused.
-        this.addCommand({
-            id: 'completr-fake-tab',
-            name: '(internal)',
-            hotkeys: [
-                {
-                    key: "Tab",
-                    modifiers: []
-                }
-            ],
-            editorCallback: (_) => {
-            },
-            // @ts-ignore
-            isBypassCommand: () => true,
-            isVisible: () => this._suggestionPopup.isVisible(),
-        });
-        this.addCommand({
-            id: 'completr-fake-enter',
-            name: '(internal)',
-            hotkeys: [
-                {
-                    key: "Enter",
-                    modifiers: []
-                }
-            ],
-            editorCallback: (_) => {
-            },
-            // @ts-ignore
-            isBypassCommand: () => true,
-            isVisible: () => this._suggestionPopup.isVisible(),
-        });
-        this.addCommand({
-            id: 'completr-fake-arrow-up',
-            name: '(internal)',
-            hotkeys: [
-                {
-                    key: "ArrowUp",
-                    modifiers: []
-                }
-            ],
-            editorCallback: (_) => {
-            },
-            // @ts-ignore
-            isBypassCommand: () => true,
-            isVisible: () => this._suggestionPopup.isVisible(),
-        });
-        this.addCommand({
-            id: 'completr-fake-arrow-down',
-            name: '(internal)',
-            hotkeys: [
-                {
-                    key: "ArrowDown",
-                    modifiers: []
-                }
-            ],
-            editorCallback: (_) => {
-            },
-            // @ts-ignore
-            isBypassCommand: () => true,
-            isVisible: () => this._suggestionPopup.isVisible(),
-        });
+        const editor = this.app.workspace.activeEditor?.editor;
+        if (editor) this.scanEditor(editor, false);
     }
 
-    async onunload() {
-        this.snippetManager.onunload();
-        await FileScanner.saveData(this.app.vault);
+    private registerEvents() {
+        const { metadataCache, vault, workspace } = this.app;
+        this.registerEvent(metadataCache.on("changed", (file, _, cache) => this.frontMatter.updateFile(file, cache)));
+        this.registerEvent(vault.on("delete", (file) => this.frontMatter.removeFile(file.path)));
+        this.registerEvent(vault.on("rename", (file, oldPath) => this.frontMatter.renameFile(oldPath, file.path)));
+
+        this.registerEvent(
+            workspace.on("file-open", (file) => {
+                // Only notes have words to learn, not PDFs, images or canvases
+                if (!(file instanceof TFile) || file.extension !== "md") return;
+                // The editor of a new tab or split is still empty at this point, the vault has the text
+                vault
+                    .cachedRead(file)
+                    .then((text) => this.fileScanner.setCurrentFileText(text, this.settings))
+                    .catch(reportError);
+            }),
+        );
+
+        // Not Obsidian's debounce: with resetTimer, it keeps waiting for a timer of the window that was active when it
+        // started. If that was a popout window that is closed in the meantime, the timer never fires and the words
+        // of the note being edited are never learned again.
+        let scanTimer: number | undefined;
+        this.register(() => window.clearTimeout(scanTimer));
+        this.registerEvent(
+            workspace.on("editor-change", (editor) => {
+                window.clearTimeout(scanTimer);
+                scanTimer = window.setTimeout(() => this.scanEditor(editor, true), SCAN_DELAY_MS);
+            }),
+        );
     }
 
-    async loadSettings() {
-        this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-
-        SuggestionBlacklist.loadData(this.app.vault).then(() => {
-            WordList.loadFromFiles(this.app.vault, this.settings);
-            FileScanner.loadData(this.app.vault);
-            Latex.loadCommands(this.app.vault);
-            Callout.loadSuggestions(this.app.vault, this);
-        });
+    /**
+     * Picks up the words of the note being edited.
+     * @param editing skip the word at the cursor, which might still be typed
+     */
+    private scanEditor(editor: Editor, editing: boolean) {
+        this.fileScanner.setCurrentFileText(
+            editor.getValue(),
+            this.settings,
+            editing ? editor.posToOffset(editor.getCursor()) : -1,
+        );
     }
 
-    get suggestionPopup() {
-        return this._suggestionPopup;
+    /** Learns the words of all notes. */
+    async scanVault() {
+        const notice = new Notice("Completr: Scanning all notes...", 0);
+        try {
+            const files = this.app.vault.getMarkdownFiles();
+            const scanned = await this.fileScanner.scanFiles(this.app.vault, files, this.settings);
+            new Notice(`Completr: Scanned ${scanned} notes, ${this.fileScanner.wordCount} known words`);
+        } finally {
+            notice.hide();
+        }
     }
 
     async saveSettings() {
         await this.saveData(this.settings);
     }
 
-    private readonly onFileOpened = (file: TFile) => {
-        if (!this.settings.fileScannerProviderEnabled || !this.settings.fileScannerScanCurrent || !file)
-            return;
-
-        FileScanner.scanFile(this.settings, file, true);
+    /** Hides a suggestion everywhere. */
+    async blacklistSuggestion(displayName: string) {
+        await this.blacklist.add(displayName);
+        this.popup.refresh();
     }
-}
-
-class CursorActivityListener {
-
-    private readonly snippetManager: SnippetManager;
-    private readonly suggestionPopup: SuggestionPopup;
-    private readonly periodInserter: PeriodInserter;
-
-    private cursorTriggeredByChange = false;
-    private lastCursorLine = -1;
-
-    constructor(snippetManager: SnippetManager, suggestionPopup: SuggestionPopup, periodInserter: PeriodInserter) {
-        this.snippetManager = snippetManager;
-        this.suggestionPopup = suggestionPopup;
-        this.periodInserter = periodInserter;
-    }
-
-    readonly listener = (update: ViewUpdate) => {
-        if (update.docChanged) {
-            this.handleDocChange();
-        }
-
-        if (update.selectionSet) {
-            this.handleCursorActivity(posFromIndex(update.state.doc, update.state.selection.main.head))
-        }
-    };
-
-    private readonly handleDocChange = () => {
-        this.cursorTriggeredByChange = true;
-    };
-
-    private readonly handleCursorActivity = (cursor: EditorPosition) => {
-        this.periodInserter.cancelInsertPeriod()
-        
-        // This prevents the popup from opening when switching to the previous line
-        const didChangeLine = this.lastCursorLine != cursor.line;
-        if (didChangeLine)
-            this.suggestionPopup.preventNextTrigger();
-        this.lastCursorLine = cursor.line;
-
-        // Clear all placeholders when moving cursor somewhere else
-        if (!this.snippetManager.placeholderAtPos(cursor)) {
-            this.snippetManager.clearAllPlaceholders();
-        }
-
-        // Prevents the suggestion popup from flickering when typing
-        if (this.cursorTriggeredByChange) {
-            this.cursorTriggeredByChange = false;
-            if (!didChangeLine)
-                return;
-        }
-
-        this.suggestionPopup.close();
-    };
 }

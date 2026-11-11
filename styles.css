@@ -1,110 +1,233 @@
 body {
-    --completr-suggestion-icon-height: 14px;
+    --completr-suggestion-icon-size: 14px;
+    --completr-placeholder-0: #87cefa;
+    --completr-placeholder-1: #ffa500;
+    --completr-placeholder-2: #32cd32;
+    --completr-placeholder-3: #ff69b4;
+    --completr-placeholder-4: #d2b48c;
+    --completr-placeholder-5: #da70d6;
+    --completr-placeholder-6: #ffdead;
 }
 
+/* ---- Inline suggestions ---- */
+
+/* Text that isn't there yet: only its color differs from the text around it. */
+.completr-ghost-text {
+    color: var(--text-faint);
+    user-select: none;
+}
+
+/* ---- Popup ---- */
+
 .completr-suggestion-item {
-    padding: 5px 10px 5px 10px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.5ch;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-
-    display: flex;
-    align-items: center;
-}
-
-.completr-suggestion-item > * {
-    display: inline-block;
 }
 
 .completr-suggestion-icon {
-    height: var(--completr-suggestion-icon-height);
-    min-height: var(--completr-suggestion-icon-height);
-    max-height: var(--completr-suggestion-icon-height);
+    display: flex;
+    flex-shrink: 0;
+    color: var(--completr-suggestion-color, var(--text-muted));
+}
 
-    margin-right: 0.5ch;
-    color: var(--completr-suggestion-color);
+.completr-suggestion-icon svg {
+    width: var(--completr-suggestion-icon-size);
+    height: var(--completr-suggestion-icon-size);
 }
 
 .completr-suggestion-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.completr-suggestion-placeholder {
-    border-width: 1px 0 1px 0;
+.completr-suggestion-preview {
+    margin-left: auto;
+    padding-left: 1em;
+    flex-shrink: 0;
+    max-height: 1.6em;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    color: var(--text-muted);
+    font-size: 0.8em;
+}
+
+.completr-suggestion-preview mjx-container {
+    margin: 0 !important;
+}
+
+/* What a snippet inserts */
+.completr-suggestion-detail {
+    margin-left: auto;
+    padding-left: 1.5em;
+    max-width: 32ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-faint);
+    font-size: 0.8em;
+}
+
+/*
+ * Buttons of a suggestion. They take up no space, so the popup is only as wide as its suggestions, and appear at the
+ * right end of the hovered suggestion, covering what is there (a preview, a snippet's detail) with the row's background
+ * that fades in from the left.
+ */
+.completr-suggestion-actions {
+    --completr-actions-fade: 1.5em;
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding-left: var(--completr-actions-fade);
+    padding-right: var(--size-4-3);
+    /* Opaque, unlike the background of the selected row, which is drawn over the popup's background */
+    background-color: var(--suggestion-background, var(--background-primary));
+    mask-image: linear-gradient(to right, transparent, black var(--completr-actions-fade));
+    visibility: hidden;
+}
+
+.suggestion-item.is-selected > .completr-suggestion-actions {
+    background-image: linear-gradient(var(--background-modifier-hover), var(--background-modifier-hover));
+}
+
+.suggestion-item:hover > .completr-suggestion-actions {
+    visibility: visible;
+}
+
+.completr-suggestion-action {
+    display: flex;
+    padding: 2px;
+    border-radius: var(--radius-s);
+    color: var(--text-faint);
+    cursor: var(--cursor);
+}
+
+.completr-suggestion-action:hover {
+    background-color: var(--background-modifier-active-hover);
+    color: var(--text-normal);
+}
+
+.completr-suggestion-action svg {
+    width: var(--completr-suggestion-icon-size);
+    height: var(--completr-suggestion-icon-size);
+}
+
+/* Without focus, no item is selected: Enter goes to the editor until an item is selected with the arrow keys. */
+.completr-unfocused .suggestion-item.is-selected:not(:hover) {
+    background-color: transparent;
+}
+
+/* ---- Snippet placeholders ---- */
+
+.completr-placeholder {
+    border-width: 1px 0;
     border-style: solid;
+    border-color: var(--completr-placeholder-color);
 }
 
-.completr-settings-no-border {
-    border: none;
+/* CodeMirror nests spans when decorations overlap, the color should apply to all of them. */
+span.completr-placeholder span {
+    border-color: var(--completr-placeholder-color);
 }
 
-.completr-settings-list-item {
-    border-top: 1px solid grey;
-    padding: 4px 0 0 0;
+.completr-placeholder-empty {
+    display: inline-block;
+    width: 0.6em;
+    height: 1em;
+    vertical-align: text-bottom;
+    border-width: 1px;
+    border-radius: 2px;
+    opacity: 0.8;
 }
+
+.completr-placeholder-0 {
+    --completr-placeholder-color: var(--completr-placeholder-0);
+}
+.completr-placeholder-1 {
+    --completr-placeholder-color: var(--completr-placeholder-1);
+}
+.completr-placeholder-2 {
+    --completr-placeholder-color: var(--completr-placeholder-2);
+}
+.completr-placeholder-3 {
+    --completr-placeholder-color: var(--completr-placeholder-3);
+}
+.completr-placeholder-4 {
+    --completr-placeholder-color: var(--completr-placeholder-4);
+}
+.completr-placeholder-5 {
+    --completr-placeholder-color: var(--completr-placeholder-5);
+}
+.completr-placeholder-6 {
+    --completr-placeholder-color: var(--completr-placeholder-6);
+}
+
+/* ---- Settings ---- */
 
 .completr-settings-error {
-    border: 1px solid red !important;
+    border-color: var(--text-error) !important;
 }
 
-/**
-Snippet color classes.
-["lightskyblue", "orange", "lime", "pink", "cornsilk", "magenta", "navajowhite"]
- */
-
-.completr-suggestion-placeholder0 {
-    border-color: lightskyblue;
+.completr-replacement-input {
+    width: 100%;
+    min-width: 20em;
+    font-family: var(--font-monospace);
 }
 
-/* These extra selectors enforce their color on all children, because CodeMirror does weird nesting of spans when
- nesting multiple decorations. */
-span.completr-suggestion-placeholder0 span {
-    border-color: lightskyblue;
+.completr-drop-hint {
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
 }
 
-.completr-suggestion-placeholder1 {
-    border-color: orange;
+.completr-drop-target.is-dragging-over {
+    outline: 2px dashed var(--interactive-accent);
+    outline-offset: -2px;
+    border-radius: var(--radius-s);
 }
 
-span.completr-suggestion-placeholder1 span {
-    border-color: orange;
+.completr-list-toolbar {
+    border-top: none;
+    padding-top: 0;
 }
 
-.completr-suggestion-placeholder2 {
-    border-color: lime;
+.completr-list-toolbar .setting-item-control {
+    flex: 1;
 }
 
-span.completr-suggestion-placeholder2 span {
-    border-color: lime;
+.completr-list-toolbar .search-input-container {
+    flex: 1;
 }
 
-.completr-suggestion-placeholder3 {
-    border-color: pink;
+.completr-list {
+    max-height: 60vh;
+    overflow-y: auto;
 }
 
-span.completr-suggestion-placeholder3 span {
-    border-color: pink;
+.completr-list-item .setting-item-name {
+    font-family: var(--font-monospace);
+    word-break: break-all;
 }
 
-.completr-suggestion-placeholder4 {
-    border-color: cornsilk;
+/* Replacements are summarized in one line */
+.completr-list-item .setting-item-info {
+    min-width: 0;
 }
 
-span.completr-suggestion-placeholder4 span {
-    border-color: cornsilk;
+.completr-list-item .setting-item-description {
+    font-family: var(--font-monospace);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.completr-suggestion-placeholder5 {
-    border-color: magenta;
-}
-
-span.completr-suggestion-placeholder5 span {
-    border-color: magenta;
-}
-
-.completr-suggestion-placeholder6 {
-    border-color: navajowhite;
-}
-
-span.completr-suggestion-placeholder6 span {
-    border-color: navajowhite;
+.completr-list-message {
+    padding-top: var(--size-4-2);
 }

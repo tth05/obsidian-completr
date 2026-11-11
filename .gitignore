@@ -22,3 +22,7 @@ blacklisted_suggestions.txt
 callout_suggestions.json
 latex_commands.json
 wordLists
+suggestion_usage.json
+*.v3.bak
+snippets.json
+*.broken.bak
