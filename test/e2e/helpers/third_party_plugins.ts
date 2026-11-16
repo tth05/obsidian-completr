@@ -90,6 +90,22 @@ export async function installPinnedPlugin(obsidian: Obsidian, plugin: PinnedPlug
         await plugins.loadManifests();
         await plugins.enablePluginAndSave(id);
     }, plugin.id);
+    await waitForLoaded(obsidian, plugin);
+}
+
+/**
+ * Loads an installed plugin without turning it on in the settings, like Lazy Plugin Loader does: it runs, but isn't in
+ * `enabledPlugins` (community-plugins.json).
+ */
+export async function lazyLoadPinnedPlugin(obsidian: Obsidian, plugin: PinnedPlugin) {
+    await disablePinnedPlugin(obsidian, plugin);
+    await obsidian.eval(async (id: string) => {
+        await app.plugins.enablePlugin(id);
+    }, plugin.id);
+    await waitForLoaded(obsidian, plugin);
+}
+
+async function waitForLoaded(obsidian: Obsidian, plugin: PinnedPlugin) {
     await obsidian.waitFor(
         () =>
             obsidian.eval(

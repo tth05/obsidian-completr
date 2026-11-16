@@ -1,11 +1,33 @@
-import type { Plugin } from "obsidian";
-import { type CalloutManager, getApi } from "obsidian-callout-manager";
+import { type App, Notice, type Plugin } from "obsidian";
+import type { CalloutManager } from "obsidian-callout-manager";
 import type { DataFiles } from "../data_files.ts";
+import { reportError } from "../errors.ts";
 import { CalloutProviderSource, type CompletrSettings } from "../settings.ts";
 import { getCalloutCompletion } from "./callout_syntax.ts";
 import { type Suggestion, type SuggestionContext, type SuggestionProvider, suggestion } from "./provider.ts";
 
 export const CALLOUT_SUGGESTIONS_FILE = "callout_suggestions.json";
+
+const CALLOUT_MANAGER_ID = "callout-manager";
+
+interface CalloutManagerPlugin extends Plugin {
+    newApiHandle(version: "v1", consumer: Plugin, cleanup: () => void): Promise<CalloutManager<true>>;
+    destroyApiHandle(version: "v1", consumer: Plugin): void;
+}
+
+/**
+ * The running Callout Manager plugin. Not done with `getApi`/`isInstalled` of the obsidian-callout-manager package,
+ * because they only look at `enabledPlugins`: plugins started by other plugins (e.g. Lazy Plugin Loader) run without
+ * being in there (#94).
+ */
+function getCalloutManagerPlugin(app: App): CalloutManagerPlugin | null {
+    return app.plugins.getPlugin(CALLOUT_MANAGER_ID) as CalloutManagerPlugin | null;
+}
+
+/** Whether Callout Manager is running, or enabled and about to be loaded. */
+export function isCalloutManagerAvailable(app: App): boolean {
+    return getCalloutManagerPlugin(app) !== null || app.plugins.enabledPlugins.has(CALLOUT_MANAGER_ID);
+}
 
 /** Suggests callout types when typing `> [!` at the start of a block quote. */
 export class CalloutProvider implements SuggestionProvider {
@@ -14,13 +36,21 @@ export class CalloutProvider implements SuggestionProvider {
     readonly blocksAllOtherProviders = true;
 
     private suggestions: Suggestion[] = [];
-    private calloutManager: CalloutManager<true> | null = null;
+    /** Whether Callout Manager is the configured source, even if it isn't running right now. */
+    private useCalloutManager = false;
+    /** The Callout Manager the suggestions come from, null if they come from the file. */
+    private connected: { plugin: CalloutManagerPlugin; api: CalloutManager<true> } | null = null;
+    /** Incremented by every (re)load, so that a slower, older load can't overwrite a newer one. */
+    private generation = 0;
     private readonly onCalloutManagerChange = () => this.loadFromCalloutManager();
 
     constructor(
         private readonly plugin: Plugin,
         private readonly files: DataFiles,
-    ) {}
+    ) {
+        // Callout Manager can be loaded after Completr (e.g. delayed by Lazy Plugin Loader) and turned off at any time
+        plugin.registerEvent(plugin.app.plugins.on("changed", () => this.onPluginsChanged()));
+    }
 
     getSuggestions(context: SuggestionContext, settings: CompletrSettings): Suggestion[] {
         if (!settings.calloutProviderEnabled) return [];
@@ -49,29 +79,50 @@ export class CalloutProvider implements SuggestionProvider {
 
     /** Loads the callout types from the configured source. Returns an error message if the file is invalid. */
     async load(settings: CompletrSettings): Promise<string | null> {
-        this.calloutManager?.off("change", this.onCalloutManagerChange);
-        this.calloutManager = null;
-
-        if (settings.calloutProviderSource === CalloutProviderSource.CALLOUT_MANAGER) {
-            const api = await getApi(this.plugin);
-            if (api) {
-                this.calloutManager = api;
-                api.on("change", this.onCalloutManagerChange);
-                this.loadFromCalloutManager();
-                return null;
-            }
-        }
-
-        return this.loadFromFile();
+        this.useCalloutManager = settings.calloutProviderSource === CalloutProviderSource.CALLOUT_MANAGER;
+        return this.reload();
     }
 
     unload() {
-        this.calloutManager?.off("change", this.onCalloutManagerChange);
-        this.calloutManager = null;
+        this.generation++;
+        this.disconnect();
+    }
+
+    private async reload(): Promise<string | null> {
+        const generation = ++this.generation;
+        this.disconnect();
+
+        const calloutManager = this.useCalloutManager ? getCalloutManagerPlugin(this.plugin.app) : null;
+        if (!calloutManager) return this.loadFromFile(generation);
+
+        const api = await calloutManager.newApiHandle("v1", this.plugin, () =>
+            calloutManager.destroyApiHandle("v1", this.plugin),
+        );
+        if (generation !== this.generation) return null;
+        this.connected = { plugin: calloutManager, api };
+        api.on("change", this.onCalloutManagerChange);
+        this.loadFromCalloutManager();
+        return null;
+    }
+
+    private disconnect() {
+        this.connected?.api.off("change", this.onCalloutManagerChange);
+        this.connected = null;
+    }
+
+    /** Connects to Callout Manager once it is loaded, and falls back to the file once it is unloaded. */
+    private onPluginsChanged() {
+        if (!this.useCalloutManager) return;
+        if (getCalloutManagerPlugin(this.plugin.app) === (this.connected?.plugin ?? null)) return;
+        this.reload()
+            .then((problem) => {
+                if (problem) new Notice("Completr: " + problem, 8000);
+            })
+            .catch(reportError);
     }
 
     private loadFromCalloutManager() {
-        const api = this.calloutManager;
+        const api = this.connected?.api;
         if (!api) return;
         this.suggestions = Array.from(api.getCallouts())
             .sort((a, b) => a.id.localeCompare(b.id))
@@ -80,8 +131,9 @@ export class CalloutProvider implements SuggestionProvider {
             );
     }
 
-    private async loadFromFile(): Promise<string | null> {
+    private async loadFromFile(generation: number): Promise<string | null> {
         const contents = await this.files.read(CALLOUT_SUGGESTIONS_FILE);
+        if (generation !== this.generation) return null;
         if (contents === null) {
             this.suggestions = defaultCallouts();
             await this.files.write(

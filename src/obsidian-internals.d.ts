@@ -23,6 +23,17 @@ declare module "obsidian" {
             /** Note: Always returns true if the command exists, even if its checkCallback returned false. */
             executeCommand(command: Command, evt?: Event): boolean;
         };
+        plugins: {
+            /**
+             * The community plugins turned on in the settings (community-plugins.json). Plugins that other plugins load
+             * themselves (e.g. Lazy Plugin Loader) are missing here, even though they run.
+             */
+            enabledPlugins: Set<string>;
+            /** A loaded community plugin, null if it isn't loaded. */
+            getPlugin(id: string): Plugin | null;
+            /** Triggered after community plugins were loaded or unloaded. */
+            on(name: "changed", callback: () => void): EventRef;
+        };
     }
 
     interface Scope {

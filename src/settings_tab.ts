@@ -1,10 +1,10 @@
 import { type App, Notice, PluginSettingTab, SettingGroup, type TextComponent } from "obsidian";
-import { isInstalled as isCalloutManagerInstalled } from "obsidian-callout-manager";
 import { decodeText } from "./data_files.ts";
 import { guarded } from "./errors.ts";
 import { BLACKLIST_COMMAND, getHotkeyLabel, OPEN_POPUP_COMMAND } from "./hotkeys.ts";
 import type CompletrPlugin from "./main.ts";
 import { ConfirmationModal, CustomEntryModal, ListModal, openCustomEntryList } from "./modals.ts";
+import { isCalloutManagerAvailable } from "./provider/callout_provider.ts";
 import type { CustomEntryFile } from "./provider/custom_suggestions.ts";
 import { CalloutProviderSource, type CompletrSettings, IconMode, SortOrder, WordInsertionMode } from "./settings.ts";
 import { compileCharacterClass } from "./text.ts";
@@ -523,7 +523,7 @@ export default class CompletrSettingsTab extends PluginSettingTab {
     private displayCallouts(containerEl: HTMLElement) {
         const group = new SettingGroup(containerEl).setHeading("Callouts");
         this.toggle(group, "calloutProviderEnabled", "Enabled", "Suggest callout types after typing '> [!'.");
-        const calloutManager = isCalloutManagerInstalled(this.app);
+        const calloutManager = isCalloutManagerAvailable(this.app);
         this.dropdown(
             group,
             "calloutProviderSource",

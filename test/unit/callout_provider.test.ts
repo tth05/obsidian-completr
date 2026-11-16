@@ -127,7 +127,11 @@ describe("CalloutProvider", () => {
     async function setup(contents?: string) {
         const { files, adapter } = makeDataFiles();
         if (contents !== undefined) adapter.files.set(FILE, contents);
-        const provider = new CalloutProvider({} as Plugin, files);
+        const plugin = {
+            app: { plugins: { on: () => ({}), getPlugin: () => null, enabledPlugins: new Set() } },
+            registerEvent: () => {},
+        } as unknown as Plugin;
+        const provider = new CalloutProvider(plugin, files);
         const error = await provider.load(makeSettings());
         return { provider, adapter, error };
     }

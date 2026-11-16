@@ -9,8 +9,14 @@ import {
     openCompletrSettings,
     readDataJson,
     selectDropdown,
+    settingDescription,
 } from "./helpers/settings_tab.ts";
-import { CALLOUT_MANAGER, disablePinnedPlugin, installPinnedPlugin } from "./helpers/third_party_plugins.ts";
+import {
+    CALLOUT_MANAGER,
+    disablePinnedPlugin,
+    installPinnedPlugin,
+    lazyLoadPinnedPlugin,
+} from "./helpers/third_party_plugins.ts";
 import { deleteNotes, forgetUsage, renderedItems } from "./helpers/words.ts";
 
 let obsidian: Obsidian;
@@ -289,5 +295,47 @@ describe("Callout Manager as source (#94)", () => {
             CalloutProviderSource.CALLOUT_MANAGER,
         ]);
         await closeSettings(obsidian);
+    });
+
+    test("Callout Manager loaded by another plugin (e.g. Lazy Plugin Loader) can be selected", async () => {
+        await lazyLoadPinnedPlugin(obsidian, CALLOUT_MANAGER);
+        expect(await obsidian.eval(() => app.plugins.enabledPlugins.has("callout-manager"))).toBe(false);
+
+        await openCompletrSettings(obsidian);
+        expect(await settingDescription(obsidian, "Callouts", "Source")).toBe("Where the callout types come from.");
+        expect(await dropdownOptions(obsidian, "Callouts", "Source")).toEqual([
+            CalloutProviderSource.COMPLETR,
+            CalloutProviderSource.CALLOUT_MANAGER,
+        ]);
+        await selectDropdown(obsidian, "Callouts", "Source", CalloutProviderSource.CALLOUT_MANAGER);
+        await closeSettings(obsidian);
+
+        // Callout Manager's title, not the "TL;DR" of callout_suggestions.json
+        await obsidian.waitFor(async () => (await suggestionsFor("tl"))[0] === "Tldr", {
+            what: "the suggestions from Callout Manager",
+        });
+        await obsidian.press("Escape");
+    });
+
+    test("connects to Callout Manager when it is loaded after Completr, falls back when it is unloaded", async () => {
+        await startErrorCapture(obsidian);
+        await obsidian.setSettings({ calloutProviderSource: CalloutProviderSource.CALLOUT_MANAGER });
+        await disablePinnedPlugin(obsidian, CALLOUT_MANAGER);
+        await obsidian.reloadPlugin();
+        expect(await suggestionsFor("tl")).toEqual(["TL;DR"]);
+        await obsidian.press("Escape");
+
+        await lazyLoadPinnedPlugin(obsidian, CALLOUT_MANAGER);
+        await obsidian.waitFor(async () => (await suggestionsFor("tl"))[0] === "Tldr", {
+            what: "Completr to connect to Callout Manager",
+        });
+        await obsidian.press("Escape");
+
+        await disablePinnedPlugin(obsidian, CALLOUT_MANAGER);
+        await obsidian.waitFor(async () => (await suggestionsFor("tl"))[0] === "TL;DR", {
+            what: "Completr to fall back to callout_suggestions.json",
+        });
+        await obsidian.press("Escape");
+        expect(await takeErrors(obsidian)).toEqual([]);
     });
 });
