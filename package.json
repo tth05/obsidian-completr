@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-completr",
-	"version": "4.0.0",
+	"version": "4.0.1",
 	"description": "This plugin provides advanced auto-completion capabilities for Obsidian",
 	"main": "main.js",
 	"type": "module",
