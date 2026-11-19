@@ -126,9 +126,14 @@ export class CalloutProvider implements SuggestionProvider {
         if (!api) return;
         this.suggestions = Array.from(api.getCallouts())
             .sort((a, b) => a.id.localeCompare(b.id))
-            .map((callout) =>
-                suggestion(api.getTitle(callout), callout.id, { icon: callout.icon, color: `rgb(${callout.color})` }),
-            );
+            .map((callout) => {
+                // The raw color is "r, g, b" before Obsidian 1.13 and a hex color since, getColor parses both
+                const color = api.getColor(callout);
+                return suggestion(api.getTitle(callout), callout.id, {
+                    icon: callout.icon,
+                    color: "invalid" in color ? undefined : `rgb(${color.r}, ${color.g}, ${color.b})`,
+                });
+            });
     }
 
     private async loadFromFile(generation: number): Promise<string | null> {

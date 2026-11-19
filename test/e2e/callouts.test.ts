@@ -234,9 +234,23 @@ describe("Callout Manager as source (#94)", () => {
         const items = await suggestionsFor("e2e");
         expect(items).toEqual(["E2e unicorn"]);
         const unicorn = (await renderedItems(obsidian))[0];
-        expect(unicorn.color).toMatch(/^rgb\(/);
+        expect(unicorn.color).toMatch(/^rgb\(\d+, \d+, \d+\)$/);
         await obsidian.press("Enter");
         await expectText(`> [!${CUSTOM}] `);
+
+        // The icon is drawn in that color. Since Obsidian 1.13, Callout Manager's colors are hex instead of "r, g, b",
+        // which turned into the invalid "rgb(#...)" and left the icons uncolored.
+        expect(await suggestionsFor("bug")).toEqual(["Bug"]);
+        const bug = await obsidian.eval(() => {
+            const item = document.querySelector<HTMLElement>(".suggestion-container .completr-suggestion-item")!;
+            return {
+                color: item.style.getPropertyValue("--completr-suggestion-color"),
+                iconColor: getComputedStyle(item.querySelector(".completr-suggestion-icon")!).color,
+            };
+        });
+        expect(bug.color).toMatch(/^rgb\(\d+, \d+, \d+\)$/);
+        expect(bug.iconColor).toBe(bug.color);
+        await obsidian.press("Escape");
 
         // Callout Manager's titles are derived from the ids
         expect(await suggestionsFor("tl")).toEqual(["Tldr"]);
